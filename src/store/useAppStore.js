@@ -8,13 +8,21 @@ import useSettingsStore from './useSettingsStore';
 const useAppStore = create(
   persist(
     (set, get) => ({
-      // ... (Stats & UI State remain the same) ...
-      xp: 0, level: 1, streak: 1, lastActiveDate: new Date().toISOString(), darkMode: false,
+      // State
+      xp: 0,
+      level: 1,
+      streak: 1,
+      lastActiveDate: new Date().toISOString(),
+      darkMode: false,
       currentScreen: 'DASHBOARD',
       activeBook: null,
       library: [],
 
-      // --- GALLERY SLICE ---
+      // Arrays - EXPLICITLY INITIALIZED
+      mistakes: [],
+      favorites: [],
+      highlights: [],
+      userSummaries: [],
       gallery: [],
       addToGallery: (item) => set((state) => ({
         gallery: [{ ...item, bookId: item.bookId || state.activeBook?.id?.toString() }, ...state.gallery]
