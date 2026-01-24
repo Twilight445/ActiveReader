@@ -1,7 +1,8 @@
 import { pdfjs } from 'react-pdf';
 
 // Ensure worker is configured
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+// Ensure worker is configured
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export const extractTextFromRange = async (fileBlob, startPage, endPage) => {
   try {

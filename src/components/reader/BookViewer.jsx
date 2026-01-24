@@ -19,7 +19,8 @@ import useSettingsStore from '../../store/useSettingsStore';
 import { analyzeTextStructure, getPdfOutline } from '../../services/structureService';
 
 // Worker Config
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+// Worker Config
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
