@@ -5,8 +5,10 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
+const FALLBACK_KEY = "AIzaSyBYLe-DjRl3SWMOCuV66pZ5AVkgz8by2sA";
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || FALLBACK_KEY,
   authDomain: "linguaroll.firebaseapp.com",
   projectId: "linguaroll",
   storageBucket: "linguaroll.firebasestorage.app",
