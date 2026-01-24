@@ -4,6 +4,9 @@ import { persist } from 'zustand/middleware';
 const useSettingsStore = create(
     persist(
         (set) => ({
+            // Cloud Sync
+            syncId: '',
+
             // API Keys (defaulting to .env values initially if needed, but easier to keep empty or load once)
             geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
             ocrSpaceApiKey: import.meta.env.VITE_OCR_SPACE_API_KEY || '',
@@ -24,6 +27,7 @@ const useSettingsStore = create(
             enablePdfScanning: true,
 
             // Actions
+            setSyncId: (id) => set({ syncId: id }),
             setGeminiApiKey: (key) => set({ geminiApiKey: key }),
             setOcrSpaceApiKey: (key) => set({ ocrSpaceApiKey: key }),
             setFreepikApiKey: (key) => set({ freepikApiKey: key }),

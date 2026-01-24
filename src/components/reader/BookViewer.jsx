@@ -24,7 +24,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 const BookViewer = () => {
-  const { activeBook, updateBookProgress, setScreen, toggleActivity, addHighlight, highlights, deleteHighlight } = useAppStore();
+  const { activeBook, updateBookProgress, setScreen, toggleActivity, addHighlight, highlights, deleteHighlight, isActivityOpen } = useAppStore();
 
   const [numPages, setNumPages] = useState(null);
   const [scale, setScale] = useState(1.0);
@@ -242,6 +242,27 @@ const BookViewer = () => {
         setActivityData(aiData);
         setIsGenerating(false);
 
+        // --- NEW: AUTO-SAVE ALL GENERATED CONTENT ---
+        const bookId = activeBook.id.toString();
+        const itemsToSave = [];
+
+        // Save Quizzes
+        if (aiData.quiz && Array.isArray(aiData.quiz)) {
+          aiData.quiz.forEach(q => itemsToSave.push({ ...q, bookId }));
+        }
+
+        // Save Concept Map
+        if (aiData.concept_map) {
+          itemsToSave.push({ ...aiData.concept_map, bookId });
+        }
+
+        // Batch Save
+        if (itemsToSave.length > 0) {
+          useAppStore.getState().addMultipleFavorites(itemsToSave);
+          console.log(`💾 Auto-saved ${itemsToSave.length} activities to notebook.`);
+        }
+        // --------------------------------------------
+
         // STEP 3: Background Image Generation
         const visualTask = aiData.quiz?.find(q => q.type === 'visual');
         const settings = useSettingsStore.getState();
@@ -288,15 +309,15 @@ const BookViewer = () => {
     <div className="h-screen w-screen bg-gray-100 flex flex-col overflow-hidden">
 
       {/* HEADER */}
-      <div className="bg-white border-b border-gray-200 px-3 py-2 flex justify-between items-center z-20 shrink-0 shadow-sm h-14">
-        <button onClick={() => setScreen('DASHBOARD')} className="p-2 hover:bg-gray-100 rounded-full text-gray-700"><ArrowLeft size={20} /></button>
-        <div className="font-bold text-gray-800 truncate text-sm max-w-[120px] md:max-w-md">{activeBook.title}</div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setScale(s => Math.max(s - 0.2, 0.6))} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full"><ZoomOut size={18} /></button>
-          <span className="text-xs font-mono w-8 text-center">{Math.round(scale * 100)}%</span>
-          <button onClick={() => setScale(s => Math.min(s + 0.2, 2.5))} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full"><ZoomIn size={18} /></button>
-          <div className="w-[1px] h-6 bg-gray-300 mx-1"></div>
-          <button onClick={() => setIsDrawMode(!isDrawMode)} className={`p-2 rounded-full transition ${isDrawMode ? 'bg-red-500 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>{isDrawMode ? <X size={18} /> : <PenTool size={18} />}</button>
+      <div className="bg-white border-b border-gray-200 px-2 md:px-3 py-2 flex justify-between items-center z-20 shrink-0 shadow-sm h-12 md:h-14">
+        <button onClick={() => setScreen('DASHBOARD')} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-full text-gray-700"><ArrowLeft size={20} /></button>
+        <div className="font-bold text-gray-800 truncate text-sm max-w-[100px] xs:max-w-[140px] md:max-w-md flex-1 mx-2">{activeBook.title}</div>
+        <div className="flex items-center gap-0.5 md:gap-1">
+          <button onClick={() => setScale(s => Math.max(s - 0.2, 0.6))} className="p-1.5 md:p-2 text-gray-600 hover:bg-gray-100 rounded-full"><ZoomOut size={18} /></button>
+          <span className="text-xs font-mono w-8 text-center hidden md:inline-block">{Math.round(scale * 100)}%</span>
+          <button onClick={() => setScale(s => Math.min(s + 0.2, 2.5))} className="p-1.5 md:p-2 text-gray-600 hover:bg-gray-100 rounded-full"><ZoomIn size={18} /></button>
+          <div className="w-[1px] h-5 md:h-6 bg-gray-300 mx-1"></div>
+          <button onClick={() => setIsDrawMode(!isDrawMode)} className={`p-1.5 md:p-2 rounded-full transition ${isDrawMode ? 'bg-red-500 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>{isDrawMode ? <X size={18} /> : <PenTool size={18} />}</button>
         </div>
       </div>
 
@@ -378,7 +399,14 @@ const BookViewer = () => {
         )}
 
       {isGenerating && <LoadingOverlay />}
-      {activityData && <ActivityOverlay data={activityData} onClose={() => { setActivityData(null); toggleActivity(false); }} />}
+      {/* ACTIVITY OVERLAY */}
+      {isActivityOpen && activityData && (
+        <ActivityOverlay
+          data={activityData}
+          bookId={activeBook.id}
+          onClose={() => { setActivityData(null); toggleActivity(false); }}
+        />
+      )}
     </div>
   );
 };

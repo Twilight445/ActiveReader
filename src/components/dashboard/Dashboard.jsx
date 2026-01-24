@@ -7,6 +7,7 @@ import QuizCard from '../activities/QuizCard';
 import NanoFlashcard from '../activities/NanoFlashcard';
 import ConceptMap from '../activities/ConceptMap';
 import SettingsOverlay from '../overlays/SettingsOverlay';
+import BookNotebook from '../overlays/BookNotebook';
 
 const Dashboard = () => {
   const {
@@ -18,6 +19,7 @@ const Dashboard = () => {
   const [reviewIndex, setReviewIndex] = useState(0);
   const [notebookTab, setNotebookTab] = useState('summaries');
   const [showSettings, setShowSettings] = useState(false);
+  const [notebookBook, setNotebookBook] = useState(null);
 
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark');
@@ -57,19 +59,20 @@ const Dashboard = () => {
     <div className={`min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-50 text-gray-900'}`}>
 
       {/* HEADER */}
-      <header className={`sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-sm backdrop-blur-md ${darkMode ? 'bg-gray-900/90 border-b border-gray-800' : 'bg-white/90 border-b border-gray-200'}`}>
-        <div><h1 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2"><Book className="text-indigo-500" /> SOCSCI FLOW</h1></div>
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2">
-            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${darkMode ? 'bg-orange-900/50 text-orange-400' : 'bg-orange-100 text-orange-700'}`}><Flame size={14} /> <span>{streak}</span></div>
-            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${darkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'}`}><Trophy size={14} /> <span>{level}</span></div>
+      <header className={`sticky top-0 z-30 px-4 md:px-6 py-3 md:py-4 flex justify-between items-center shadow-sm backdrop-blur-md ${darkMode ? 'bg-gray-900/90 border-b border-gray-800' : 'bg-white/90 border-b border-gray-200'}`}>
+        <div><h1 className="text-lg md:text-2xl font-black tracking-tight flex items-center gap-2"><Book className="text-indigo-500" size={24} /> <span className="hidden xs:inline">SOCSCI FLOW</span></h1></div>
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-1 md:gap-2">
+            <div className={`flex items-center gap-1 px-2 md:px-3 py-1 rounded-full text-xs font-bold ${darkMode ? 'bg-orange-900/50 text-orange-400' : 'bg-orange-100 text-orange-700'}`}><Flame size={14} /> <span>{streak}</span></div>
+            <div className={`flex items-center gap-1 px-2 md:px-3 py-1 rounded-full text-xs font-bold ${darkMode ? 'bg-yellow-900/50 text-yellow-400' : 'bg-yellow-100 text-yellow-700'}`}><Trophy size={14} /> <span>{level}</span></div>
           </div>
-          <button onClick={() => setShowSettings(true)} className={`p-2 rounded-full transition ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><Settings size={20} /></button>
-          <button onClick={toggleDarkMode} className={`p-2 rounded-full transition ${darkMode ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{darkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
+          <button onClick={() => setShowSettings(true)} className={`p-2 rounded-full transition ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><Settings size={18} /></button>
+          <button onClick={toggleDarkMode} className={`p-2 rounded-full transition ${darkMode ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{darkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
         </div>
       </header>
 
       {showSettings && <SettingsOverlay onClose={() => setShowSettings(false)} />}
+      {notebookBook && <BookNotebook book={notebookBook} onClose={() => setNotebookBook(null)} />}
 
       <main className="p-4 md:p-8 max-w-5xl mx-auto flex flex-col gap-8 pb-20">
 
@@ -135,8 +138,9 @@ const Dashboard = () => {
                   </div>
 
                   <div className="mt-4 flex gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); deleteBook(book.id); }} className="flex-1 py-2 rounded-lg text-xs font-bold text-red-400 hover:bg-red-50 hover:text-red-600 transition">Delete</button>
-                    <button className={`flex-[2] py-2 rounded-lg text-xs font-bold transition ${darkMode ? 'bg-indigo-600 text-white' : 'bg-gray-900 text-white'}`}>Open Book</button>
+                    <button onClick={(e) => { e.stopPropagation(); deleteBook(book.id); }} className="px-3 py-2 rounded-lg text-xs font-bold text-red-400 hover:bg-red-50 hover:text-red-600 transition">Trash</button>
+                    <button onClick={(e) => { e.stopPropagation(); setNotebookBook(book); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 ${darkMode ? 'bg-gray-800 text-indigo-400 hover:bg-gray-700' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><Book size={14} /> Notebook</button>
+                    <button className={`flex-[2] py-2 rounded-lg text-xs font-bold transition ${darkMode ? 'bg-indigo-600 text-white' : 'bg-gray-900 text-white'}`}>Open Read</button>
                   </div>
                 </div>
               ))}

@@ -11,22 +11,34 @@ import TimelineGame from '../activities/TimelineGame';
 import NanoFlashcard from '../activities/NanoFlashcard';
 import ConceptMap from '../activities/ConceptMap';
 
-const ActivityOverlay = ({ data, onClose }) => {
+const ActivityOverlay = ({ data, bookId, onClose }) => {
   const { addXP, addMistake, toggleFavorite, favorites } = useAppStore();
   const [step, setStep] = useState(0);
   const [score, setScore] = useState(0);
 
   // Initialize Tasks
   const [tasks, setTasks] = useState(() => {
-    const mixedTasks = (data.quiz || []).map(t => ({ ...t, type: t.type || 'mcq' }));
-    const timelines = (data.timeline || []).map(t => ({ ...t, type: 'timeline' }));
+    const mixedTasks = (data.quiz || []).map(t => ({ ...t, type: t.type || 'mcq', bookId }));
+
+    // --- NEW: Summary Task ---
+    let summaryTasks = [];
+    if (data.short_summary) {
+      summaryTasks.push({
+        type: 'summary',
+        title: "Quick Recap",
+        summary: data.short_summary
+      });
+    }
+
+    const timelines = (data.timeline || []).map(t => ({ ...t, type: 'timeline', bookId }));
 
     let mapTasks = [];
     if (data.concept_map) {
       mapTasks.push({
         type: 'concept_map',
         title: data.concept_map.title,
-        mermaid_code: data.concept_map.mermaid_code
+        mermaid_code: data.concept_map.mermaid_code,
+        bookId
       });
     }
 
@@ -39,11 +51,13 @@ const ActivityOverlay = ({ data, onClose }) => {
         answer: data.summary || "Key Concept",
         image_prompt: data.visual_concept,
         imageUrl: null,
-        isLoading: true
+        isLoading: true,
+        bookId
       });
     }
 
-    const allTasks = [...mapTasks, ...mixedTasks, ...timelines, ...visualTasks];
+    // Order: Map -> Quiz -> Summary -> Timeline -> Visual
+    const allTasks = [...mapTasks, ...mixedTasks, ...summaryTasks, ...timelines, ...visualTasks];
 
     // Start loading images
     allTasks.forEach(t => {
@@ -124,53 +138,67 @@ const ActivityOverlay = ({ data, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm overflow-y-auto overflow-x-hidden">
 
-      {/* TOP CONTROLS */}
-      <div className="absolute top-6 left-6 flex gap-4">
+      {/* TOP CONTROLS - Fixed to Viewport */}
+      <div className="fixed top-4 left-4 z-[70] flex gap-3">
         {/* Back Button */}
         <button
           onClick={handlePrev}
           disabled={step === 0}
-          className="text-white/50 hover:text-white transition disabled:opacity-20 disabled:cursor-not-allowed"
+          className="p-2 bg-black/40 rounded-full text-white/70 hover:text-white transition disabled:opacity-0 disabled:pointer-events-none backdrop-blur-md"
         >
-          <ChevronLeft size={32} />
+          <ChevronLeft size={28} />
         </button>
       </div>
 
-      <div className="absolute top-6 right-6 flex gap-4">
+      <div className="fixed top-4 right-4 z-[70] flex gap-3">
         {/* Save/Favorite Button */}
         <button
           onClick={handleToggleSave}
-          className={`transition transform hover:scale-110 ${isSaved ? 'text-red-500' : 'text-white/50 hover:text-white'}`}
-          title="Save to Favorites"
+          className={`p-2 rounded-full backdrop-blur-md transition ${isSaved ? 'bg-red-500/20 text-red-500' : 'bg-black/40 text-white/70 hover:text-white hover:bg-black/60'}`}
         >
-          <Heart size={32} fill={isSaved ? "currentColor" : "none"} />
+          <Heart size={24} fill={isSaved ? "currentColor" : "none"} />
         </button>
 
         {/* Close Button */}
-        <button onClick={onClose} className="text-white/50 hover:text-white transition">
-          <X size={32} />
+        <button onClick={onClose} className="p-2 bg-black/40 rounded-full text-white/70 hover:text-white backdrop-blur-md hover:bg-black/60 transition">
+          <X size={24} />
         </button>
       </div>
 
       {/* Progress Dots */}
-      <div className="absolute top-10 left-1/2 transform -translate-x-1/2 flex gap-2">
+      <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[60] flex gap-1.5 pointer-events-none">
         {tasks.map((_, i) => (
-          <div key={i} className={`h-2 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-accent' : 'w-2 bg-white/20'}`} />
+          <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-6 bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)]' : 'w-1.5 bg-white/30'}`} />
         ))}
       </div>
 
-      {/* COMPONENT SWITCHER */}
-      {currentTask?.type === 'concept_map' ? (
-        <ConceptMap data={currentTask} onNext={handleNext} />
-      ) : currentTask?.type === 'timeline' ? (
-        <TimelineGame data={currentTask} onNext={handleNext} />
-      ) : currentTask?.type === 'visual' ? (
-        <NanoFlashcard data={currentTask} onNext={handleNext} />
-      ) : (
-        <QuizCard data={currentTask} onNext={handleNext} />
-      )}
+      {/* MAIN CONTENT SCROLL AREA */}
+      <div className="w-full max-w-5xl min-h-screen pt-20 pb-10 flex flex-col items-center justify-center px-4">
+        {currentTask?.type === 'concept_map' ? (
+          <ConceptMap data={currentTask} onNext={handleNext} />
+        ) : currentTask?.type === 'summary' ? (
+          <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full">
+                <Bookmark size={24} />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800">{currentTask.title}</h2>
+            </div>
+            <p className="text-gray-600 text-lg leading-relaxed mb-8">{currentTask.summary}</p>
+            <button onClick={() => handleNext(true)} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+              Continue
+            </button>
+          </div>
+        ) : currentTask?.type === 'timeline' ? (
+          <TimelineGame data={currentTask} onNext={handleNext} />
+        ) : currentTask?.type === 'visual' ? (
+          <NanoFlashcard data={currentTask} onNext={handleNext} />
+        ) : (
+          <QuizCard data={currentTask} onNext={handleNext} />
+        )}
+      </div>
     </div>
   );
 };

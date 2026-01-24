@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { set as setDb, get as getDb, del as delDb } from 'idb-keyval';
-// CHANGE THIS IMPORT:
-import { upload } from "@vercel/blob/client"; // Use /client
-// import { list } from "@vercel/blob"; // We can keep list, but it might also block on client.
+import { db } from '../firebase';
+import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import useSettingsStore from './useSettingsStore';
 
 const useAppStore = create(
   persist(
@@ -16,7 +16,9 @@ const useAppStore = create(
 
       // --- GALLERY SLICE ---
       gallery: [],
-      addToGallery: (item) => set((state) => ({ gallery: [item, ...state.gallery] })),
+      addToGallery: (item) => set((state) => ({
+        gallery: [{ ...item, bookId: item.bookId || state.activeBook?.id?.toString() }, ...state.gallery]
+      })),
       updateGalleryImage: (id, url, status = 'success') => set((state) => ({
         gallery: state.gallery.map(img => img.id === id ? { ...img, url, status } : img)
       })),
@@ -34,6 +36,49 @@ const useAppStore = create(
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
 
       // ... (Keep addXP) ...
+      addXP: (amount) => {
+        set((state) => {
+          const newXP = state.xp + amount;
+          const newLevel = Math.floor(newXP / 100) + 1;
+          return { xp: newXP, level: newLevel };
+        });
+        get().saveUserDataToCloud();
+      },
+
+      addMistake: (q) => {
+        const bookId = get().activeBook?.id?.toString();
+        set(s => ({ mistakes: [...s.mistakes, { ...q, bookId: q.bookId || bookId }] }));
+        get().saveUserDataToCloud();
+      },
+      resolveMistake: (q) => { set(s => ({ mistakes: s.mistakes.filter(m => m.question !== q) })); get().saveUserDataToCloud(); },
+      toggleFavorite: (i) => {
+        set(s => {
+          const id = i.question || i.title || i.mermaid_code;
+          const exists = s.favorites.find(f => (f.question || f.title || f.mermaid_code) === id);
+          if (exists) {
+            return { favorites: s.favorites.filter(f => (f.question || f.title || f.mermaid_code) !== id) };
+          } else {
+            const bookId = get().activeBook?.id?.toString();
+            return { favorites: [...s.favorites, { ...i, bookId: i.bookId || bookId }] };
+          }
+        });
+        get().saveUserDataToCloud();
+      },
+
+      addMultipleFavorites: (items) => {
+        const bookId = get().activeBook?.id?.toString();
+        set(state => {
+          const newFavs = [...state.favorites];
+          items.forEach(item => {
+            const id = item.question || item.title || item.mermaid_code;
+            if (!newFavs.some(f => (f.question || f.title || f.mermaid_code) === id)) {
+              newFavs.push({ ...item, bookId: item.bookId || bookId });
+            }
+          });
+          return { favorites: newFavs };
+        });
+        get().saveUserDataToCloud();
+      },
 
       // --- 1. LOCAL UPLOAD (Offline) ---
       addBookToLibrary: async (file) => {
@@ -42,90 +87,202 @@ const useAppStore = create(
           await setDb(`pdf_${bookId}`, file);
           const newBook = { id: bookId, title: file.name, type: 'LOCAL', progress: 1, totalPages: 0, lastRead: new Date().toISOString() };
           set((state) => ({ library: [newBook, ...state.library], activeBook: { ...newBook, fileData: file }, currentScreen: 'READER' }));
+
+          // Sync with Cloud
+          const syncId = useSettingsStore.getState().syncId;
+          if (syncId) {
+            get().saveUserDataToCloud(bookId.toString());
+          }
         } catch (error) { alert("Local storage full."); }
       },
 
-      // --- 2. CLOUD UPLOAD (Secure) ---
+      // --- 2. CLOUD REGISTRATION (Metadata Only) ---
       uploadToCloud: async (file) => {
+        const syncId = useSettingsStore.getState().syncId;
+        if (!syncId) { alert("Please set a Cloud Sync Key in Settings first."); return; }
+
         set({ isUploading: true });
         try {
-          // This calls your new /api/upload route automatically
-          const newBlob = await upload(file.name, file, {
-            access: 'public',
-            handleUploadUrl: '/api/upload', // Point to the gatekeeper
-          });
+          // 1. Save File Locally (since we can't use Cloud Storage)
+          const bookId = Date.now().toString();
+          await setDb(`pdf_${bookId}`, file);
 
+          // 2. Create Book Object
           const newBook = {
-            id: Date.now(),
+            id: bookId,
             title: file.name,
-            type: 'CLOUD',
-            url: newBlob.url, // URL from Vercel
+            type: 'LOCAL', // Treat as local so we look in IDB
+            url: null,     // No cloud URL
             progress: 1,
             totalPages: 0,
             lastRead: new Date().toISOString()
           };
 
+          // 3. Save Metadata to Firestore
+          await setDoc(doc(db, "sync_users", syncId, "books", newBook.id), newBook);
+
+          // 4. Update Local State
           set((state) => ({
             library: [newBook, ...state.library],
-            activeBook: newBook,
+            activeBook: { ...newBook, fileData: file },
             currentScreen: 'READER',
             isUploading: false
           }));
 
+          alert("Book registered! Metadata synced.\n\nNote: Since Cloud Storage is off, you must manually add this PDF on other devices if missing.");
+
         } catch (error) {
-          console.error("Cloud Upload Failed:", error);
-          // Helpful error message for localhost users
-          alert("Upload failed. \n\nNOTE: Cloud upload requires the app to be DEPLOYED on Vercel, or running via 'vercel dev'. It usually fails on standard 'npm run dev'.");
+          console.error("Cloud Reg Failed:", error);
+          alert("Registration failed: " + error.message);
           set({ isUploading: false });
         }
       },
 
-      // --- 3. SYNC WITH CLOUD (The Fix!) ---
+      // --- 3. SYNC LOGIC (Firestore) ---
       syncCloudLibrary: async () => {
+        const state = get();
+        const syncId = useSettingsStore.getState().syncId;
+        if (!syncId) { alert("No Sync Key set."); return; }
+
         set({ isSyncing: true });
         try {
-          // 1. Ask Vercel: "Give me a list of all files"
-          const { blobs } = await list({
-            token: import.meta.env.VITE_BLOB_READ_WRITE_TOKEN
-          });
+          // 1. Sync User Stats
+          await get().saveUserDataToCloud();
 
-          // 2. Compare with current library
-          const currentLib = get().library;
-          const newCloudBooks = [];
+          // 2. Sync ALL Books
+          const books = state.library;
+          console.log(`🔄 Syncing ${books.length} books...`);
 
-          blobs.forEach((blob) => {
-            // If this file is NOT in our library yet...
-            const exists = currentLib.find(b => b.url === blob.url);
-
-            if (!exists) {
-              newCloudBooks.push({
-                id: Date.now() + Math.random(), // Unique ID
-                title: blob.pathname, // File name
-                type: 'CLOUD',
-                url: blob.url,
-                progress: 1,
-                totalPages: 0,
-                lastRead: blob.uploadedAt // Use upload time
-              });
-            }
-          });
-
-          // 3. Update Library if we found new books
-          if (newCloudBooks.length > 0) {
-            set((state) => ({
-              library: [...newCloudBooks, ...state.library],
-              isSyncing: false
-            }));
-            alert(`Synced! Found ${newCloudBooks.length} new books.`);
-          } else {
-            set({ isSyncing: false });
-            alert("Cloud is up to date.");
+          for (const book of books) {
+            await get().saveUserDataToCloud(book.id.toString());
           }
 
-        } catch (error) {
-          console.error("Sync Error:", error);
-          alert("Could not sync. Check internet.");
+          setTimeout(() => {
+            set({ isSyncing: false });
+            alert(`Full Sync Completed! (${books.length} books scanned)`);
+          }, 800);
+        } catch (e) {
+          console.error(e);
           set({ isSyncing: false });
+          alert("Sync Failed: " + e.message);
+        }
+      },
+
+      initializeSync: (syncId) => {
+        if (!syncId) return () => { };
+
+        // Listener for Books
+        const unsubBooks = onSnapshot(collection(db, "sync_users", syncId, "books"), (snapshot) => {
+          const cloudBooks = [];
+          snapshot.forEach(doc => cloudBooks.push({ ...doc.data(), id: doc.id }));
+
+          if (cloudBooks.length === 0) return;
+
+          set(state => {
+            const newLib = [...state.library];
+            let incomingHighlights = [];
+            let incomingSummaries = [];
+            let incomingFavorites = [];
+            let incomingGallery = [];
+
+            cloudBooks.forEach(cBook => {
+              const cId = cBook.id.toString();
+              // Extract arrays
+              if (cBook.highlights) incomingHighlights.push(...cBook.highlights);
+              if (cBook.summaries) incomingSummaries.push(...cBook.summaries);
+              if (cBook.questions) incomingFavorites.push(...cBook.questions);
+              if (cBook.gallery) incomingGallery.push(...cBook.gallery);
+
+              // Find strict match by ID or fuzzy match by Title
+              const existingIdx = newLib.findIndex(b => b.id.toString() === cId || b.title === cBook.title);
+
+              if (existingIdx >= 0) {
+                const existing = newLib[existingIdx];
+                newLib[existingIdx] = { ...existing, ...cBook, fileData: existing.fileData };
+              } else {
+                newLib.push(cBook);
+              }
+            });
+
+            // Merge & Dedupe function (Simple ID check)
+            const mergedHighlights = [...state.highlights, ...incomingHighlights].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+            const mergedSummaries = [...state.userSummaries, ...incomingSummaries].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+            const mergedGallery = [...state.gallery, ...incomingGallery].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+            const mergedFavorites = [...state.favorites, ...incomingFavorites].filter((v, i, a) => a.findIndex(t => ((t.id || t.question) === (v.id || v.question))) === i);
+
+            // Final Book Deduplication
+            const uniqueLib = [];
+            const seenIds = new Set();
+            for (const b of newLib) {
+              const sid = b.id.toString();
+              if (!seenIds.has(sid)) {
+                uniqueLib.push(b);
+                seenIds.add(sid);
+              }
+            }
+
+            return {
+              library: uniqueLib,
+              highlights: mergedHighlights,
+              userSummaries: mergedSummaries,
+              favorites: mergedFavorites,
+              gallery: mergedGallery
+            };
+          });
+        });
+
+        // Listener for User Stats
+        const unsubStats = onSnapshot(doc(db, "sync_users", syncId), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            set(state => {
+              if (data.xp > state.xp) return { xp: data.xp, level: data.level, streak: data.streak };
+              return {};
+            });
+          }
+        });
+
+        return () => {
+          console.log("Cleaning up Sync Listeners");
+          unsubBooks();
+          unsubStats();
+        };
+      },
+
+      saveUserDataToCloud: async (targetBookId) => {
+        const state = get();
+        const syncId = useSettingsStore.getState().syncId;
+        if (!syncId) return;
+
+        try {
+          // Save Stats
+          await setDoc(doc(db, "sync_users", syncId), {
+            xp: state.xp,
+            level: state.level,
+            streak: state.streak,
+            lastActive: new Date().toISOString()
+          }, { merge: true });
+
+          // Save Book Data
+          const bookId = targetBookId || (state.activeBook ? state.activeBook.id.toString() : null);
+          if (bookId) {
+            const bookMeta = state.library.find(b => b.id.toString() === bookId);
+            if (!bookMeta) return;
+
+            const { fileData, ...cleanBook } = bookMeta;
+
+            await setDoc(doc(db, "sync_users", syncId, "books", bookId), {
+              ...cleanBook,
+              lastRead: new Date().toISOString(),
+              highlights: state.highlights.filter(h => h.bookId?.toString() === bookId),
+              summaries: state.userSummaries.filter(s => s.bookId?.toString() === bookId),
+              questions: state.favorites.filter(f => f.bookId?.toString() === bookId),
+              gallery: state.gallery.filter(g => g.bookId?.toString() === bookId)
+            }, { merge: true });
+            console.log("✅ Cloud Sync Success for Book:", bookId);
+          }
+        } catch (e) {
+          console.error("❌ Cloud Sync Error:", e);
         }
       },
 
@@ -166,24 +323,27 @@ const useAppStore = create(
         return { activeBook: updatedBook, library: updatedLibrary };
       }),
 
-      updateBookStructure: (structure) => set((state) => {
-        if (!state.activeBook) return {};
-        const updatedBook = { ...state.activeBook, structure };
-        const updatedLibrary = state.library.map((b) => b.id === updatedBook.id ? updatedBook : b);
-        return { activeBook: updatedBook, library: updatedLibrary };
-      }),
-      // ... keep addMistake, resolveMistake, etc. exactly as they were ...
-      addMistake: (q) => set(s => ({ mistakes: [...s.mistakes, q] })),
-      resolveMistake: (q) => set(s => ({ mistakes: s.mistakes.filter(m => m.question !== q) })),
-      toggleFavorite: (i) => set(s => {
-        const id = i.question || i.title || i.mermaid_code;
-        const exists = s.favorites.find(f => (f.question || f.title || f.mermaid_code) === id);
-        return exists ? { favorites: s.favorites.filter(f => (f.question || f.title || f.mermaid_code) !== id) } : { favorites: [...s.favorites, i] };
-      }),
-      addHighlight: (text, color, page, bookId, rect) => set((state) => ({ highlights: [...state.highlights, { id: Date.now(), bookId, text, color, page, rect, date: new Date().toISOString() }] })),
-      deleteHighlight: (id) => set((state) => ({ highlights: state.highlights.filter(h => h.id !== id) })),
-      addUserSummary: (summary, page, bookId) => set((state) => ({ userSummaries: [...state.userSummaries, { id: Date.now(), bookId, summary, page, date: new Date().toISOString() }] })),
-      deleteUserSummary: (id) => set((state) => ({ userSummaries: state.userSummaries.filter(s => s.id !== id) })),
+      updateBookStructure: (structure) => {
+        set((state) => {
+          if (!state.activeBook) return {};
+          const updatedBook = { ...state.activeBook, structure };
+          const updatedLibrary = state.library.map((b) => b.id === updatedBook.id ? updatedBook : b);
+          return { activeBook: updatedBook, library: updatedLibrary };
+        });
+        get().saveUserDataToCloud();
+      },
+      addHighlight: (text, color, page, bookId, rect) => { set((state) => ({ highlights: [...state.highlights, { id: Date.now(), bookId, text, color, page, rect, date: new Date().toISOString() }] })); get().saveUserDataToCloud(bookId); },
+      deleteHighlight: (id) => {
+        const bookId = get().activeBook?.id;
+        set((state) => ({ highlights: state.highlights.filter(h => h.id !== id) }));
+        if (bookId) get().saveUserDataToCloud(bookId);
+      },
+      addUserSummary: (summary, page, bookId) => { set((state) => ({ userSummaries: [...state.userSummaries, { id: Date.now(), bookId, summary, page, date: new Date().toISOString() }] })); get().saveUserDataToCloud(bookId); },
+      deleteUserSummary: (id) => {
+        const bookId = get().activeBook?.id;
+        set((state) => ({ userSummaries: state.userSummaries.filter(s => s.id !== id) }));
+        if (bookId) get().saveUserDataToCloud(bookId);
+      },
     }),
     {
       name: 'socsci-storage',

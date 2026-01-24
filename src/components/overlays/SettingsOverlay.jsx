@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, Save, Key, Image as ImageIcon, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
+import { X, Save, Key, Image as ImageIcon, Settings as SettingsIcon, ShieldCheck, Cloud } from 'lucide-react';
 import useSettingsStore from '../../store/useSettingsStore';
 
 const SettingsOverlay = ({ onClose }) => {
     const settings = useSettingsStore();
 
     const [form, setForm] = useState({
+        syncId: settings.syncId,
         geminiApiKey: settings.geminiApiKey,
         ocrSpaceApiKey: settings.ocrSpaceApiKey,
         freepikApiKey: settings.freepikApiKey,
@@ -18,6 +19,7 @@ const SettingsOverlay = ({ onClose }) => {
     });
 
     const handleSave = () => {
+        settings.setSyncId(form.syncId);
         settings.setGeminiApiKey(form.geminiApiKey);
         settings.setOcrSpaceApiKey(form.ocrSpaceApiKey);
         settings.setFreepikApiKey(form.freepikApiKey);
@@ -46,6 +48,29 @@ const SettingsOverlay = ({ onClose }) => {
 
                 {/* Scrollable Content */}
                 <div className="p-6 overflow-y-auto space-y-6">
+
+                    {/* Cloud Sync (No Login) */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-4 rounded-xl space-y-3 border border-indigo-100 shadow-sm">
+                        <div className="flex items-center gap-2 text-indigo-700 font-bold uppercase tracking-wide text-xs">
+                            <span className="bg-indigo-600 text-white p-1 rounded-md shadow-sm"><Cloud size={14} /></span> Cloud Sync (No Login)
+                        </div>
+                        <p className="text-xs text-indigo-700/80 leading-relaxed">
+                            Enter a unique <b>Sync Key</b> (e.g., your name + project) to sync data across devices without an account.
+                            <span className="block mt-1 text-indigo-500 font-semibold opacity-75">Warning: Anyone with this key can view your data.</span>
+                        </p>
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <Key className="absolute left-3 top-2.5 text-indigo-400" size={16} />
+                                <input
+                                    type="text"
+                                    value={form.syncId || ''}
+                                    onChange={e => setForm({ ...form, syncId: e.target.value })}
+                                    placeholder="Create a Sync Key..."
+                                    className="w-full pl-10 pr-3 py-2 rounded-lg border-2 border-indigo-100 focus:border-indigo-500 focus:ring-0 outline-none text-indigo-900 font-mono font-bold text-sm bg-white shadow-inner transition"
+                                />
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Toggles */}
                     <div className="bg-gray-50 p-4 rounded-xl space-y-3">
@@ -79,65 +104,65 @@ const SettingsOverlay = ({ onClose }) => {
                             <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide flex items-center gap-2">
                                 <ShieldCheck size={16} /> Context Strategy
                             </h3>
-                            <div className="flex flex-col items-end gap-2">
+                            <div className="flex flex-col items-end gap-3 md:gap-2">
                                 {/* Toggle: Manual Chapter Mode */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-3">
                                     <span className="text-xs font-semibold text-gray-600">Manual Chapter Mode</span>
                                     <button
                                         onClick={() => setForm(f => ({ ...f, manualChapterMode: !f.manualChapterMode }))}
-                                        className={`w-10 h-5 rounded-full transition-colors relative ${form.manualChapterMode ? 'bg-orange-500' : 'bg-gray-300'}`}
+                                        className={`w-11 h-6 rounded-full transition-colors relative ${form.manualChapterMode ? 'bg-orange-500' : 'bg-gray-300'}`}
                                     >
-                                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow transition-transform ${form.manualChapterMode ? 'left-6' : 'left-1'}`} />
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.manualChapterMode ? 'left-6' : 'left-1'}`} />
                                     </button>
                                 </div>
                                 {/* Toggle: Periodic Checkpoints */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-3">
                                     <span className="text-xs font-semibold text-gray-600">Auto-Checkpoints (5pg)</span>
                                     <button
                                         onClick={() => setForm(f => ({ ...f, enablePeriodicCheckpoints: !f.enablePeriodicCheckpoints }))}
-                                        className={`w-10 h-5 rounded-full transition-colors relative ${form.enablePeriodicCheckpoints ? 'bg-orange-500' : 'bg-gray-300'}`}
+                                        className={`w-11 h-6 rounded-full transition-colors relative ${form.enablePeriodicCheckpoints ? 'bg-orange-500' : 'bg-gray-300'}`}
                                     >
-                                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow transition-transform ${form.enablePeriodicCheckpoints ? 'left-6' : 'left-1'}`} />
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.enablePeriodicCheckpoints ? 'left-6' : 'left-1'}`} />
                                     </button>
                                 </div>
                             </div>
                         </div>
 
                         {/* Sliders */}
-                        <div className="space-y-3">
-                            <div>
-                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-1">
+                        <div className="space-y-4 md:space-y-3">
+                            <div className="py-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-2">
                                     <span>Scanned PDF Checkpoint (Pages: {form.scannedContextLimit})</span>
                                 </div>
                                 <input
                                     type="range" min="1" max="10" step="1"
                                     value={form.scannedContextLimit}
                                     onChange={(e) => setForm({ ...form, scannedContextLimit: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                                 />
                             </div>
 
-                            <div>
-                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-1">
+                            <div className="py-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-2">
                                     <span>Text PDF Checkpoint (Pages: {form.textContextLimit})</span>
                                 </div>
                                 <input
                                     type="range" min="1" max="15" step="1"
                                     value={form.textContextLimit}
                                     onChange={(e) => setForm({ ...form, textContextLimit: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                                 />
                             </div>
 
-                            <div>
-                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-1">
+                            <div className="py-1">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-2">
                                     <span>Chapter End Analysis (Pages: {form.chapterContextLimit})</span>
                                 </div>
                                 <input
                                     type="range" min="5" max="30" step="1"
                                     value={form.chapterContextLimit}
                                     onChange={(e) => setForm({ ...form, chapterContextLimit: parseInt(e.target.value) })}
-                                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                                    className="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                                 />
                             </div>
                         </div>
