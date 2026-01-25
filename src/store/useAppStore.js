@@ -195,11 +195,10 @@ const useAppStore = create(
 
             cloudBooks.forEach(cBook => {
               const cId = cBook.id.toString();
-              // Extract arrays
+              // Extract arrays (gallery excluded to prevent size limit errors)
               if (cBook.highlights) incomingHighlights.push(...cBook.highlights);
               if (cBook.summaries) incomingSummaries.push(...cBook.summaries);
               if (cBook.questions) incomingFavorites.push(...cBook.questions);
-              if (cBook.gallery) incomingGallery.push(...cBook.gallery);
 
               // Find strict match by ID or fuzzy match by Title
               const existingIdx = newLib.findIndex(b => b.id.toString() === cId || b.title === cBook.title);
@@ -215,7 +214,6 @@ const useAppStore = create(
             // Merge & Dedupe function (Simple ID check)
             const mergedHighlights = [...state.highlights, ...incomingHighlights].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
             const mergedSummaries = [...state.userSummaries, ...incomingSummaries].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
-            const mergedGallery = [...state.gallery, ...incomingGallery].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
             const mergedFavorites = [...state.favorites, ...incomingFavorites].filter((v, i, a) => a.findIndex(t => ((t.id || t.question) === (v.id || v.question))) === i);
 
             // Final Book Deduplication
@@ -233,8 +231,8 @@ const useAppStore = create(
               library: uniqueLib,
               highlights: mergedHighlights,
               userSummaries: mergedSummaries,
-              favorites: mergedFavorites,
-              gallery: mergedGallery
+              favorites: mergedFavorites
+              // gallery remains local-only to prevent size issues
             };
           });
         });
@@ -279,18 +277,33 @@ const useAppStore = create(
 
             const { fileData, ...cleanBook } = bookMeta;
 
-            await setDoc(doc(db, "sync_users", syncId, "books", bookId), {
+            // Prepare data for sync (excluding gallery to prevent size limit)
+            const bookData = {
               ...cleanBook,
               lastRead: new Date().toISOString(),
               highlights: state.highlights.filter(h => h.bookId?.toString() === bookId),
               summaries: state.userSummaries.filter(s => s.bookId?.toString() === bookId),
-              questions: state.favorites.filter(f => f.bookId?.toString() === bookId),
-              gallery: state.gallery.filter(g => g.bookId?.toString() === bookId)
-            }, { merge: true });
-            console.log("✅ Cloud Sync Success for Book:", bookId);
+              questions: state.favorites.filter(f => f.bookId?.toString() === bookId)
+              // Gallery excluded - images cause document size to exceed 1MB limit
+            };
+
+            // Calculate estimated size to warn user
+            const estimatedSize = JSON.stringify(bookData).length;
+            if (estimatedSize > 900000) { // 900KB warning threshold
+              console.warn(`⚠️ Book data approaching size limit: ${(estimatedSize / 1024).toFixed(0)}KB`);
+            }
+
+            await setDoc(doc(db, "sync_users", syncId, "books", bookId), bookData, { merge: true });
+            console.log(`✅ Cloud Sync Success for Book: ${bookId} (${(estimatedSize / 1024).toFixed(0)}KB)`);
           }
         } catch (e) {
-          console.error("❌ Cloud Sync Error:", e);
+          // Enhanced error handling for size limit
+          if (e.message && e.message.includes('exceeds the maximum allowed size')) {
+            console.error("❌ Cloud Sync Error: Document too large. Try removing some favorites or highlights.");
+            // Don't throw - fail silently to not break user experience
+          } else {
+            console.error("❌ Cloud Sync Error:", e);
+          }
         }
       },
 

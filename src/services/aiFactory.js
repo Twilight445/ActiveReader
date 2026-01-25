@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import useSettingsStore from '../store/useSettingsStore';
+import { generateWithPawan } from './pawanService';
 
 // --- CONFIGURATION ---
 const getGenAI = () => {
@@ -43,15 +44,65 @@ Structure:
 }
 `;
 
+// --- HELPER: Try a single provider ---
+const tryProvider = async (provider, mode, data, type, promptPrefix) => {
+  const textPrompt = `${promptPrefix} ${JSON_INSTRUCTION}`;
+
+  if (provider === 'GEMINI') {
+    const genAI = getGenAI();
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    let result;
+    if (mode === 'VISION') {
+      const images = Array.isArray(data) ? data : [data];
+      const imageParts = images.map(img => ({
+        inlineData: { data: img, mimeType: "image/jpeg" }
+      }));
+      result = await model.generateContent([textPrompt, ...imageParts]);
+    } else {
+      result = await model.generateContent([textPrompt, data]);
+    }
+
+    const response = await result.response;
+    return response.text();
+  }
+  else if (provider === 'COSMOSRP_2_5' || provider === 'COSMOSRP_2_1') {
+    // Pawan CosmosRP models
+    const images = (mode === 'VISION') ? (Array.isArray(data) ? data : [data]) : null;
+    const textData = (mode === 'TEXT') ? data : "";
+
+    // Shorter prompt for vision mode to reduce payload size
+    const fullPrompt = (mode === 'TEXT')
+      ? textPrompt
+      : "Analyze these images and create study activities. Return ONLY valid JSON.";
+
+    return await generateWithPawan(
+      provider,
+      mode === 'TEXT' ? `${fullPrompt}\n\n${textData}` : fullPrompt,
+      images,
+      true // Use instructed version for more natural responses
+    );
+  }
+  else if (provider === 'GPT_OSS') {
+    // GPT-OSS doesn't support vision
+    if (mode === 'VISION') {
+      throw new Error('GPT-OSS does not support vision mode');
+    }
+    return await generateWithPawan(provider, `${textPrompt}\n\n${data}`, null, false);
+  }
+
+  throw new Error(`Unknown provider: ${provider}`);
+};
+
 // --- MAIN FUNCTION ---
 /**
- * Generates activities from PDF content.
+ * Generates activities from PDF content with automatic provider fallback.
  * @param {object} parsedInput - { mode: 'TEXT'|'VISION', data: string|string[] }
  * @param {string} type - 'MICRO' or 'CHAPTER_END'.
  */
 export const generateActivities = async (parsedInput, type = 'MICRO') => {
 
-  const { enableAiFeatures } = useSettingsStore.getState();
+  const { enableAiFeatures, preferredAiProvider, enableAutoFallback, visionProvider } = useSettingsStore.getState();
   if (!enableAiFeatures) {
     console.warn("🛑 AI Features are disabled in settings.");
     return null;
@@ -59,65 +110,108 @@ export const generateActivities = async (parsedInput, type = 'MICRO') => {
 
   const { mode, data } = parsedInput;
 
-  try {
-    console.log(`🤖 Gemini is thinking in ${mode} mode...`);
+  // Determine provider order based on settings
+  let providerChain = [];
 
-    // Refresh instance with latest key
-    const genAI = getGenAI();
-    // Use Gemini 2.5 Flash for EVERYTHING (Multimodal)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-    let result;
-
-    // --- SCENARIO A: SCANNED PDF (VISION MODE) ---
-    if (mode === 'VISION') {
-      const images = Array.isArray(data) ? data : [data];
-      const prompt = `You are an expert tutor. Analyze these textbook page images. Extract key concepts and create a study activity set. ${JSON_INSTRUCTION}`;
-
-      const imageParts = images.map(img => ({
-        inlineData: { data: img, mimeType: "image/jpeg" }
-      }));
-
-      result = await model.generateContent([prompt, ...imageParts]);
+  if (mode === 'VISION') {
+    // Vision mode - use vision-capable models
+    if (visionProvider === 'GEMINI') {
+      providerChain = ['GEMINI'];
+    } else if (visionProvider === 'COSMOSRP') {
+      providerChain = ['COSMOSRP_2_5', 'COSMOSRP_2_1'];
+    } else {
+      // AUTO mode
+      providerChain = ['GEMINI', 'COSMOSRP_2_5', 'COSMOSRP_2_1'];
     }
-    // --- SCENARIO B: STANDARD PDF (TEXT MODE) ---
-    else {
-      const promptPrefix = type === 'CHAPTER_END'
-        ? "You are an expert examiner. This is the end of a chapter. Create a comprehensive review."
-        : "You are a Social Science tutor. Analyze this text.";
-
-      result = await model.generateContent([
-        `${promptPrefix} ${JSON_INSTRUCTION}`,
-        data
-      ]);
+  } else {
+    // Text mode - respect user preference
+    if (preferredAiProvider === 'GEMINI') {
+      providerChain = enableAutoFallback
+        ? ['GEMINI', 'COSMOSRP_2_5', 'COSMOSRP_2_1', 'GPT_OSS']
+        : ['GEMINI'];
+    } else if (preferredAiProvider === 'COSMOSRP_2_5') {
+      providerChain = enableAutoFallback
+        ? ['COSMOSRP_2_5', 'COSMOSRP_2_1', 'GEMINI']
+        : ['COSMOSRP_2_5'];
+    } else if (preferredAiProvider === 'COSMOSRP_2_1') {
+      providerChain = enableAutoFallback
+        ? ['COSMOSRP_2_1', 'COSMOSRP_2_5', 'GEMINI']
+        : ['COSMOSRP_2_1'];
+    } else if (preferredAiProvider === 'GPT_OSS') {
+      providerChain = enableAutoFallback
+        ? ['GPT_OSS', 'GEMINI', 'COSMOSRP_2_5']
+        : ['GPT_OSS'];
     }
-
-    // Process Response
-    const response = await result.response;
-    let textResponse = response.text();
-
-    // Clean up markdown
-    textResponse = textResponse.replace(/```json|```/g, '').trim();
-    const dataJSON = JSON.parse(textResponse);
-
-    // 🍌 "Nano Banana" Step: Visual Concept Processing
-    // Just return the prompt here, the Caller (BookViewer) will handle the generation
-    if (dataJSON.visual_concept) {
-      console.log("🍌 Nano Banana logic triggered:", dataJSON.visual_concept);
-      if (!dataJSON.quiz) dataJSON.quiz = [];
-      dataJSON.quiz.push({
-        type: 'visual',
-        question: "What concept does this image represent?",
-        answer: (dataJSON.summary_bullet_points && dataJSON.summary_bullet_points[0]) || "Key Concept",
-        image_prompt: dataJSON.visual_concept
-      });
-    }
-
-    console.log("✅ AI Data Generated:", dataJSON);
-    return dataJSON;
-
-  } catch (error) {
-    console.error("❌ AI Generation Failed:", error);
-    return null;
   }
+
+  const promptPrefix = type === 'CHAPTER_END'
+    ? "You are an expert examiner. This is the end of a chapter. Create a comprehensive review."
+    : "You are a Social Science tutor. Analyze this text.";
+
+  // Try each provider in the chain
+  let lastError = null;
+  for (const provider of providerChain) {
+    try {
+      console.log(`🤖 Trying ${provider} in ${mode} mode...`);
+
+      const textResponse = await tryProvider(provider, mode, data, type, promptPrefix);
+
+      console.log(`📝 Raw response from ${provider}:`, textResponse.substring(0, 200) + '...');
+
+      // Clean up markdown and various response formats
+      let cleanedResponse = textResponse
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Try to extract JSON if it's embedded in text
+      const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedResponse = jsonMatch[0];
+      }
+
+      console.log(`🧹 Cleaned response:`, cleanedResponse.substring(0, 200) + '...');
+
+      let dataJSON;
+      try {
+        dataJSON = JSON.parse(cleanedResponse);
+      } catch (parseError) {
+        console.error(`❌ JSON Parse Error for ${provider}:`, parseError.message);
+        console.error(`Raw response that failed to parse:`, textResponse);
+        throw new Error(`Invalid JSON response from ${provider}: ${parseError.message}`);
+      }
+
+      // 🍌 "Nano Banana" Step: Visual Concept Processing
+      if (dataJSON.visual_concept) {
+        console.log("🍌 Nano Banana logic triggered:", dataJSON.visual_concept);
+        if (!dataJSON.quiz) dataJSON.quiz = [];
+        dataJSON.quiz.push({
+          type: 'visual',
+          question: "What concept does this image represent?",
+          answer: (dataJSON.summary_bullet_points && dataJSON.summary_bullet_points[0]) || "Key Concept",
+          image_prompt: dataJSON.visual_concept
+        });
+      }
+
+      console.log(`✅ AI Data Generated using ${provider}:`, dataJSON);
+      return dataJSON;
+
+    } catch (error) {
+      console.warn(`❌ ${provider} failed:`, error.message);
+      console.warn(`Error details:`, error);
+      lastError = error;
+
+      // If this is the last provider in the chain, throw the error
+      if (provider === providerChain[providerChain.length - 1]) {
+        console.error("❌ All AI providers failed. Last error:", error);
+        return null;
+      }
+
+      // Otherwise, continue to next provider
+      console.log(`⚠️ Falling back to next provider...`);
+    }
+  }
+
+  console.error("❌ All AI providers failed.");
+  return null;
 };

@@ -2,6 +2,7 @@ import { pdfjs } from 'react-pdf';
 import { extractTextFromRange } from './pdfHelper';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import useSettingsStore from '../store/useSettingsStore';
+import { generateWithPawan } from './pawanService';
 
 // Ensure worker
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
@@ -59,8 +60,8 @@ export const getPdfOutline = async (fileBlob) => {
 };
 
 /**
- * Analyzes Index/TOC using AI (Fallback).
- * Extracts first 10 pages text -> Gemini -> JSON Structure.
+ * Analyzes Index/TOC using AI (Fallback) with multi-provider support.
+ * Extracts first 10 pages text -> AI -> JSON Structure.
  */
 export const analyzeTextStructure = async (fileBlob) => {
     // 1. Check Outline first (Fastest/Most Reliable)
@@ -73,13 +74,8 @@ export const analyzeTextStructure = async (fileBlob) => {
     const text = await extractTextFromRange(fileBlob, 1, 10);
     if (!text || text.length < 100) return null; // Scanned or empty
 
-    // 3. AI Analysis
-    const { geminiApiKey } = useSettingsStore.getState();
-    const key = geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY;
-    if (!key) return null;
-
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // 3. AI Analysis with fallback
+    const { geminiApiKey, preferredAiProvider, enableAutoFallback } = useSettingsStore.getState();
 
     const prompt = `
     Analyze this book text (first 10 pages).
@@ -93,14 +89,55 @@ export const analyzeTextStructure = async (fileBlob) => {
     If unknown, return null.
     `;
 
-    try {
-        const result = await model.generateContent([prompt, text]);
-        const responseText = await result.response.text();
-        const json = JSON.parse(responseText.replace(/```json|```/g, '').trim());
-        console.log("🤖 AI Structure Analysis:", json);
-        return json;
-    } catch (e) {
-        console.error("AI Analysis Failed:", e);
-        return null;
+    // Build provider chain (text-only, no vision needed)
+    let providerChain = [];
+    if (preferredAiProvider === 'GEMINI') {
+        providerChain = enableAutoFallback ? ['GEMINI', 'COSMOSRP_2_5', 'GPT_OSS'] : ['GEMINI'];
+    } else if (preferredAiProvider === 'COSMOSRP_2_5') {
+        providerChain = enableAutoFallback ? ['COSMOSRP_2_5', 'GEMINI'] : ['COSMOSRP_2_5'];
+    } else if (preferredAiProvider === 'COSMOSRP_2_1') {
+        providerChain = enableAutoFallback ? ['COSMOSRP_2_1', 'GEMINI'] : ['COSMOSRP_2_1'];
+    } else if (preferredAiProvider === 'GPT_OSS') {
+        providerChain = enableAutoFallback ? ['GPT_OSS', 'GEMINI'] : ['GPT_OSS'];
     }
+
+    // Try each provider
+    for (const provider of providerChain) {
+        try {
+            console.log(`🔍 Trying structure analysis with ${provider}...`);
+
+            let responseText;
+            if (provider === 'GEMINI') {
+                const key = geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY;
+                if (!key) {
+                    console.warn("No Gemini API key available");
+                    continue;
+                }
+                const genAI = new GoogleGenerativeAI(key);
+                const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const result = await model.generateContent([prompt, text]);
+                const response = await result.response;
+                responseText = response.text();
+            } else {
+                // Use Pawan models
+                responseText = await generateWithPawan(
+                    provider,
+                    `${prompt}\n\n${text}`,
+                    null,
+                    provider.startsWith('COSMOSRP') // Use instructed for CosmosRP
+                );
+            }
+
+            const json = JSON.parse(responseText.replace(/```json|```/g, '').trim());
+            console.log(`✅ Structure analysis succeeded with ${provider}:`, json);
+            return json;
+
+        } catch (e) {
+            console.warn(`❌ Structure analysis failed with ${provider}:`, e.message);
+            // Continue to next provider
+        }
+    }
+
+    console.error("All providers failed for structure analysis");
+    return null;
 };

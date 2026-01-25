@@ -30,7 +30,8 @@ export const getPageAsImage = async (fileBlob, pageNum) => {
     const pdf = await pdfjs.getDocument(arrayBuffer).promise;
     const page = await pdf.getPage(pageNum);
 
-    const viewport = page.getViewport({ scale: 1.5 }); // 1.5x scale for AI readability
+    // Reduced scale and quality for faster vision API calls
+    const viewport = page.getViewport({ scale: 1.2 }); // Reduced from 1.5x to 1.2x
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     canvas.height = viewport.height;
@@ -38,8 +39,8 @@ export const getPageAsImage = async (fileBlob, pageNum) => {
 
     await page.render({ canvasContext: context, viewport: viewport }).promise;
 
-    // Return pure Base64 string (no data:image/jpeg prefix)
-    return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+    // Return pure Base64 string with lower quality (0.5 instead of 0.8)
+    return canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
   } catch (error) {
     console.error("Image conversion failed:", error);
     return null;

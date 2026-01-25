@@ -9,8 +9,14 @@ const useSettingsStore = create(
 
             // API Keys (defaulting to .env values initially if needed, but easier to keep empty or load once)
             geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
+            pawanApiKey: import.meta.env.VITE_PAWAN_API_KEY || '',
             ocrSpaceApiKey: import.meta.env.VITE_OCR_SPACE_API_KEY || '',
             freepikApiKey: import.meta.env.VITE_FREEPIK_API_KEY || '',
+
+            // AI Provider Configuration
+            preferredAiProvider: 'GEMINI', // 'GEMINI', 'COSMOSRP_2_5', 'COSMOSRP_2_1', 'GPT_OSS'
+            enableAutoFallback: true, // Enable automatic fallback to Pawan models
+            visionProvider: 'AUTO', // 'AUTO', 'GEMINI', 'COSMOSRP' - for scanned PDFs
 
             // Image Generation Config
             imageGenProvider: 'FREEPIK', // 'FREEPIK' or 'NONE'
@@ -29,9 +35,15 @@ const useSettingsStore = create(
             // Actions
             setSyncId: (id) => set({ syncId: id }),
             setGeminiApiKey: (key) => set({ geminiApiKey: key }),
+            setPawanApiKey: (key) => set({ pawanApiKey: key }),
             setOcrSpaceApiKey: (key) => set({ ocrSpaceApiKey: key }),
             setFreepikApiKey: (key) => set({ freepikApiKey: key }),
             setImageGenProvider: (provider) => set({ imageGenProvider: provider }),
+
+            // AI Provider Actions
+            setPreferredAiProvider: (provider) => set({ preferredAiProvider: provider }),
+            toggleAutoFallback: () => set((state) => ({ enableAutoFallback: !state.enableAutoFallback })),
+            setVisionProvider: (provider) => set({ visionProvider: provider }),
 
             // Context Actions
             setScannedContextLimit: (n) => set({ scannedContextLimit: n }),
@@ -44,9 +56,14 @@ const useSettingsStore = create(
             togglePdfScanning: () => set((state) => ({ enablePdfScanning: !state.enablePdfScanning })),
             resetDefaults: () => set({
                 geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
+                pawanApiKey: import.meta.env.VITE_PAWAN_API_KEY || '',
                 ocrSpaceApiKey: import.meta.env.VITE_OCR_SPACE_API_KEY || '',
                 freepikApiKey: import.meta.env.VITE_FREEPIK_API_KEY || '',
                 imageGenProvider: 'FREEPIK',
+
+                preferredAiProvider: 'GEMINI',
+                enableAutoFallback: true,
+                visionProvider: 'AUTO',
 
                 scannedContextLimit: 3,
                 textContextLimit: 5,

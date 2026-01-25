@@ -228,11 +228,15 @@ const BookViewer = () => {
       const startPage = Math.max(1, currentPage - limit + 1);
       const parsedInput = await parsePdf(fileToRead, startPage, currentPage);
 
-      if (!parsedInput || !parsedInput.data) {
-        throw new Error("Could not extract content from this page.");
+      // Check for errors
+      if (!parsedInput || parsedInput.mode === 'ERROR' || !parsedInput.data) {
+        console.error("❌ PDF parsing failed or returned no data");
+        throw new Error("Could not extract content from this page. The PDF may be corrupted or the page may be unreadable.");
       }
 
-      // STEP 2: Send to AI Factory (Gemini 2.5 Flash)
+      console.log(`✅ Parsed PDF in ${parsedInput.mode} mode with ${Array.isArray(parsedInput.data) ? parsedInput.data.length + ' images' : 'text'}`);
+
+      // STEP 2: Send to AI Factory
       const aiData = await generateActivities(
         parsedInput,
         triggerType || 'MICRO'

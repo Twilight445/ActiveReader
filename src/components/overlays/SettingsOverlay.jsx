@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Save, Key, Image as ImageIcon, Settings as SettingsIcon, ShieldCheck, Cloud } from 'lucide-react';
+import { X, Save, Key, Image as ImageIcon, Settings as SettingsIcon, ShieldCheck, Cloud, Zap } from 'lucide-react';
 import useSettingsStore from '../../store/useSettingsStore';
 
 const SettingsOverlay = ({ onClose }) => {
@@ -8,9 +8,13 @@ const SettingsOverlay = ({ onClose }) => {
     const [form, setForm] = useState({
         syncId: settings.syncId,
         geminiApiKey: settings.geminiApiKey,
+        pawanApiKey: settings.pawanApiKey,
         ocrSpaceApiKey: settings.ocrSpaceApiKey,
         freepikApiKey: settings.freepikApiKey,
         imageGenProvider: settings.imageGenProvider,
+        // AI Provider
+        preferredAiProvider: settings.preferredAiProvider,
+        visionProvider: settings.visionProvider,
         // Context
         scannedContextLimit: settings.scannedContextLimit,
         textContextLimit: settings.textContextLimit,
@@ -21,9 +25,13 @@ const SettingsOverlay = ({ onClose }) => {
     const handleSave = () => {
         settings.setSyncId(form.syncId);
         settings.setGeminiApiKey(form.geminiApiKey);
+        settings.setPawanApiKey(form.pawanApiKey);
         settings.setOcrSpaceApiKey(form.ocrSpaceApiKey);
         settings.setFreepikApiKey(form.freepikApiKey);
         settings.setImageGenProvider(form.imageGenProvider);
+
+        settings.setPreferredAiProvider(form.preferredAiProvider);
+        settings.setVisionProvider(form.visionProvider);
 
         settings.setScannedContextLimit(form.scannedContextLimit);
         settings.setTextContextLimit(form.textContextLimit);
@@ -94,6 +102,58 @@ const SettingsOverlay = ({ onClose }) => {
                                 className={`w-12 h-6 rounded-full transition-colors relative ${form.imageGenProvider === 'FREEPIK' ? 'bg-green-500' : 'bg-gray-300'}`}
                             >
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.imageGenProvider === 'FREEPIK' ? 'left-7' : 'left-1'}`} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* AI Provider Configuration */}
+                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 p-4 rounded-xl space-y-4 border border-purple-100 shadow-sm">
+                        <div className="flex items-center gap-2 text-purple-700 font-bold uppercase tracking-wide text-xs">
+                            <span className="bg-purple-600 text-white p-1 rounded-md shadow-sm"><Zap size={14} /></span> AI Provider Configuration
+                        </div>
+
+                        {/* Preferred AI Provider */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600">Preferred AI Provider</label>
+                            <select
+                                value={form.preferredAiProvider}
+                                onChange={(e) => setForm({ ...form, preferredAiProvider: e.target.value })}
+                                className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                            >
+                                <option value="GEMINI">Gemini 2.5 Flash (Google)</option>
+                                <option value="COSMOSRP_2_5">CosmosRP-2.5 (Pawan - Vision)</option>
+                                <option value="COSMOSRP_2_1">CosmosRP-2.1 (Pawan - Vision)</option>
+                                <option value="GPT_OSS">GPT-OSS 20B (Pawan)</option>
+                            </select>
+                            <p className="text-xs text-purple-600 mt-1">Primary AI model for generating activities</p>
+                        </div>
+
+                        {/* Vision Provider for Scanned PDFs */}
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600">Vision Model (Scanned PDFs)</label>
+                            <select
+                                value={form.visionProvider}
+                                onChange={(e) => setForm({ ...form, visionProvider: e.target.value })}
+                                className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                            >
+                                <option value="AUTO">Auto (Try Gemini first)</option>
+                                <option value="GEMINI">Gemini Only</option>
+                                <option value="COSMOSRP">CosmosRP Only</option>
+                            </select>
+                            <p className="text-xs text-purple-600 mt-1">Analyzes scanned PDF pages as images</p>
+                        </div>
+
+                        {/* Auto-Fallback Toggle */}
+                        <div className="flex items-center justify-between pt-2">
+                            <div>
+                                <span className="font-semibold text-gray-700 text-sm">Auto-Fallback</span>
+                                <p className="text-xs text-gray-500 mt-0.5">Switch to backup models if primary fails</p>
+                            </div>
+                            <button
+                                onClick={settings.toggleAutoFallback}
+                                className={`w-12 h-6 rounded-full transition-colors relative ${settings.enableAutoFallback ? 'bg-purple-500' : 'bg-gray-300'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.enableAutoFallback ? 'left-7' : 'left-1'}`} />
                             </button>
                         </div>
                     </div>
@@ -180,6 +240,16 @@ const SettingsOverlay = ({ onClose }) => {
                                 value={form.geminiApiKey}
                                 onChange={(e) => setForm({ ...form, geminiApiKey: e.target.value })}
                                 placeholder="Enter Gemini API Key..."
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600">Pawan API Key <span className="text-purple-500">(Optional - Free tier available)</span></label>
+                            <input
+                                type="password"
+                                value={form.pawanApiKey}
+                                onChange={(e) => setForm({ ...form, pawanApiKey: e.target.value })}
+                                placeholder="Enter Pawan API Key..."
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                         </div>

@@ -9,24 +9,46 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          }
+        ]
+      },
       manifest: {
-        name: 'SocSci Flow - Study Companion',
+        name: 'SocSci Flow - AI Study Companion',
         short_name: 'SocSci Flow',
-        description: 'AI-Powered Social Science Textbooks',
-        theme_color: '#ffffff',
+        description: 'AI-Powered Social Science Textbook Reader with Smart Activities',
+        theme_color: '#4F46E5',
         background_color: '#ffffff',
-        display: 'standalone', // This removes the URL bar on mobile!
+        display: 'standalone',
         orientation: 'portrait',
+        start_url: '/',
         icons: [
           {
-            src: 'pwa-192x192.png', // We will create these next
+            src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       }
