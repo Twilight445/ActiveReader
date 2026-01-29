@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-
+  optimizeDeps: {
+    include: ['pdfjs-dist'],
+  },
   plugins: [
     react(),
     VitePWA({
@@ -55,6 +57,11 @@ export default defineConfig({
     })
   ],
   server: {
+    port: 5176,
+    strictPort: true,
+    hmr: {
+      clientPort: 5176,
+    },
     proxy: {
       '/freepik-api': {
         target: 'https://api.freepik.com/v1',

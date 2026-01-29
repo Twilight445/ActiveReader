@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, Loader2, ArrowLeft, ZoomIn, ZoomOut, PenTool, X, Trash2, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, ArrowLeft, ZoomIn, ZoomOut, PenTool, X, Trash2, CheckCircle2, UploadCloud, BookOpen } from 'lucide-react';
 import useAppStore from '../../store/useAppStore';
 
 // Hooks & Components
@@ -40,6 +40,24 @@ const BookViewer = () => {
   const canvasRef = useRef(null);
   const pageContainerRef = useRef(null);
   const scrollContainerRef = useRef(null);
+
+  // Dictionary State
+  const [dictionaryData, setDictionaryData] = useState(null);
+
+  const handleDefine = async () => {
+    if (!selection?.text) return;
+    const word = selection.text.trim();
+    try {
+      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setDictionaryData(data[0]);
+      else setDictionaryData({ word, meanings: [] });
+    } catch (e) {
+      setDictionaryData({ word, meanings: [] });
+    }
+    setSelection(null);
+    window.getSelection().removeAllRanges();
+  };
 
   // Settings
   const manualChapterMode = useSettingsStore(s => s.manualChapterMode);
@@ -338,6 +356,18 @@ const BookViewer = () => {
                 error={<div className="h-96 flex items-center justify-center text-red-500 p-8 text-center font-bold">Failed to load PDF.</div>}
               >
                 <Page pageNumber={currentPage} scale={scale} renderTextLayer={!isDrawMode} renderAnnotationLayer={false} width={pdfWidth} />
+                {/* PRE-RENDER NEXT PAGE (Hidden) */}
+                {currentPage < numPages && (
+                  <div style={{ display: 'none' }}>
+                    <Page
+                      pageNumber={currentPage + 1}
+                      scale={scale}
+                      renderTextLayer={false}
+                      renderAnnotationLayer={false}
+                      width={pdfWidth}
+                    />
+                  </div>
+                )}
               </Document>
             ) : (
               <div className="h-96 flex flex-col items-center justify-center text-gray-500"><Loader2 className="animate-spin mb-2" size={40} /><p className="font-bold text-sm">Preparing...</p></div>
@@ -387,7 +417,22 @@ const BookViewer = () => {
         )}
       </div>
 
-      {selection && !isDrawMode && (<div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 shadow-xl z-[60] animate-in slide-in-from-bottom flex flex-col gap-3"><div className="flex justify-between items-center"><span className="text-xs font-bold text-gray-500 uppercase">Save Highlight</span><button onClick={() => { setSelection(null); window.getSelection().removeAllRanges(); }} className="p-1 bg-gray-100 rounded-full"><X size={16} /></button></div><div className="flex justify-between gap-3">{['#fff59d', '#a5d6a7', '#90caf9', '#ef9a9a'].map(color => (<button key={color} onClick={() => saveHighlight(color)} className="flex-1 h-12 rounded-xl border-2 border-transparent transition shadow-sm" style={{ backgroundColor: color }} />))}</div></div>)}
+
+
+      {selection && !isDrawMode && (
+        <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 shadow-xl z-[60] animate-in slide-in-from-bottom flex flex-col gap-3">
+          <div className="flex justify-between items-center">
+            <div className="flex gap-2">
+              <button onClick={handleDefine} className="px-4 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-gray-700 transition">
+                <BookOpen size={14} /> Define
+              </button>
+              <span className="text-xs font-bold text-gray-500 uppercase self-center ml-2 border-l pl-2 border-gray-300">Highlight</span>
+            </div>
+            <button onClick={() => { setSelection(null); window.getSelection().removeAllRanges(); }} className="p-1 bg-gray-100 rounded-full"><X size={16} /></button>
+          </div>
+          <div className="flex justify-between gap-3">{['#fff59d', '#a5d6a7', '#90caf9', '#ef9a9a'].map(color => (<button key={color} onClick={() => saveHighlight(color)} className="flex-1 h-12 rounded-xl border-2 border-transparent transition shadow-sm" style={{ backgroundColor: color }} />))}</div>
+        </div>
+      )}
 
       {/* Auto-Prompt Logic */}
       {!isPromptDismissed && !isGenerating && !activityData && !isScrubbing && triggerState.show && (
@@ -403,6 +448,42 @@ const BookViewer = () => {
         )}
 
       {isGenerating && <LoadingOverlay />}
+      {/* FILE RECOVERY UI */}
+      {activeBook.isMissingFile && (
+        <div className="fixed inset-0 z-[100] bg-gray-100 flex flex-col items-center justify-center p-6 text-center">
+          <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full animate-in zoom-in">
+            <div className="bg-red-100 text-red-600 p-4 rounded-full inline-block mb-4">
+              <Trash2 size={32} />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Local File Not Found</h2>
+            <p className="text-gray-500 mb-6 text-sm">
+              The PDF file for <span className="font-bold">"{activeBook.title}"</span> is missing from this device.
+              This happens if you cleared browser data or synced from another device.
+            </p>
+
+            <label className="block w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl cursor-pointer transition shadow-lg">
+              <span className="flex items-center justify-center gap-2">
+                <UploadCloud size={20} /> Re-upload PDF
+              </span>
+              <input
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files[0]) useAppStore.getState().recoverLocalBook(e.target.files[0]);
+                }}
+              />
+            </label>
+            <button
+              onClick={() => setScreen('DASHBOARD')}
+              className="mt-4 text-gray-400 font-bold hover:text-gray-600 text-sm"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ACTIVITY OVERLAY */}
       {isActivityOpen && activityData && (
         <ActivityOverlay
@@ -410,6 +491,40 @@ const BookViewer = () => {
           bookId={activeBook.id}
           onClose={() => { setActivityData(null); toggleActivity(false); }}
         />
+      )}
+
+      {/* DICTIONARY MODAL */}
+      {dictionaryData && (
+        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center p-4 md:p-0" onClick={() => setDictionaryData(null)}>
+          <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-2xl font-black text-gray-800 capitalize">{dictionaryData.word}</h2>
+                {dictionaryData.phonetic && <p className="text-gray-400 font-mono">{dictionaryData.phonetic}</p>}
+              </div>
+              <button onClick={() => setDictionaryData(null)} className="p-2 bg-gray-100 rounded-full"><X size={20} /></button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto space-y-4">
+              {dictionaryData.meanings?.map((m, i) => (
+                <div key={i}>
+                  <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">{m.partOfSpeech}</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    {m.definitions.slice(0, 3).map((d, j) => (
+                      <li key={j} className="text-sm text-gray-700 leading-relaxed">
+                        {d.definition}
+                        {d.example && <p className="text-xs text-gray-400 italic mt-1">"{d.example}"</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {(!dictionaryData.meanings || dictionaryData.meanings.length === 0) && (
+                <p className="text-gray-500">No definitions found.</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

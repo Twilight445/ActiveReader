@@ -33,10 +33,10 @@ const TimelineGame = ({ data, onNext }) => {
     // Check if the current order matches the 'order' property (1, 2, 3...)
     const currentOrder = items.map(i => i.order);
     const sortedOrder = [...items].map(i => i.order).sort((a, b) => a - b);
-    
+
     // Compare arrays
     const correct = JSON.stringify(currentOrder) === JSON.stringify(sortedOrder);
-    
+
     setIsSubmitted(true);
     setIsCorrect(correct);
 
@@ -58,32 +58,32 @@ const TimelineGame = ({ data, onNext }) => {
           {data.question || "Arrange these events from First to Last:"}
         </h2>
 
-        <div className="space-y-2 mb-6">
+        <div className="space-y-2 mb-6 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-purple-200 scrollbar-track-transparent">
           {items.map((item, index) => (
-            <div 
+            <div
               key={item.id}
               className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all
-                ${isSubmitted 
-                  ? (item.order === index + 1 ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50') 
+                ${isSubmitted
+                  ? (item.order === index + 1 ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50')
                   : 'border-gray-100 bg-white hover:border-purple-200'
                 }
               `}
             >
               <span className="font-bold text-gray-400 w-6">#{index + 1}</span>
               <span className="flex-1 font-medium text-sm text-gray-700">{item.label}</span>
-              
+
               {/* Controls (Only show if not submitted) */}
               {!isSubmitted && (
                 <div className="flex flex-col gap-1">
-                  <button 
-                    onClick={() => moveItem(index, -1)} 
+                  <button
+                    onClick={() => moveItem(index, -1)}
                     disabled={index === 0}
                     className="p-1 hover:bg-gray-100 rounded disabled:opacity-20 text-purple-600"
                   >
                     <ArrowUp size={16} />
                   </button>
-                  <button 
-                    onClick={() => moveItem(index, 1)} 
+                  <button
+                    onClick={() => moveItem(index, 1)}
                     disabled={index === items.length - 1}
                     className="p-1 hover:bg-gray-100 rounded disabled:opacity-20 text-purple-600"
                   >
@@ -97,7 +97,7 @@ const TimelineGame = ({ data, onNext }) => {
 
         {/* Action Button */}
         {!isSubmitted ? (
-          <button 
+          <button
             onClick={handleSubmit}
             className="w-full py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition"
           >
@@ -106,10 +106,10 @@ const TimelineGame = ({ data, onNext }) => {
         ) : (
           <div className={`text-center font-bold p-3 rounded-xl ${isCorrect ? 'text-green-600 bg-green-100' : 'text-red-600 bg-red-100'}`}>
             {isCorrect ? (
-              <span className="flex items-center justify-center gap-2"><CheckCircle size={20}/> Correct! Moving on...</span>
+              <span className="flex items-center justify-center gap-2"><CheckCircle size={20} /> Correct! Moving on...</span>
             ) : (
               <button onClick={() => { setIsSubmitted(false); }} className="flex items-center justify-center gap-2 w-full">
-                <RotateCcw size={18}/> Wrong order. Try Again?
+                <RotateCcw size={18} /> Wrong order. Try Again?
               </button>
             )}
           </div>

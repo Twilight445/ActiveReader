@@ -9,7 +9,7 @@ const QuizCard = ({ data, onNext }) => {
   useEffect(() => {
     setSelected(null);
     setIsCorrect(null);
-  }, [data]); 
+  }, [data]);
 
   // --- CRASH PREVENTION ---
   // If the AI sends bad data (no question or no options), we skip it safely.
@@ -20,7 +20,7 @@ const QuizCard = ({ data, onNext }) => {
         <AlertTriangle className="mx-auto text-yellow-500 mb-4" size={40} />
         <h3 className="text-gray-800 font-bold">Skipping invalid question...</h3>
         <p className="text-gray-500 text-sm mb-4">The AI generated a question format we didn't recognize.</p>
-        <button 
+        <button
           onClick={() => onNext(true)} // Auto-skip as "correct" so flow continues
           className="bg-gray-200 text-gray-800 px-6 py-2 rounded-full font-bold hover:bg-gray-300"
         >
@@ -34,16 +34,16 @@ const QuizCard = ({ data, onNext }) => {
   const handleSelect = (option) => {
     if (selected) return;
     setSelected(option);
-    
+
     // Loose matching for robustness
-    const correct = 
-      option === data.answer || 
+    const correct =
+      option === data.answer ||
       (data.answer && option.toLowerCase().startsWith(data.answer.toLowerCase()));
 
     setIsCorrect(correct);
 
     setTimeout(() => {
-      onNext(correct); 
+      onNext(correct);
     }, 1500);
   };
 
@@ -54,7 +54,7 @@ const QuizCard = ({ data, onNext }) => {
         <p className="text-white/80 text-sm">Test your retention</p>
       </div>
 
-      <div className="p-8">
+      <div className="p-8 max-h-[60vh] overflow-y-auto">
         <h2 className="text-xl font-semibold text-gray-800 mb-6 leading-relaxed">
           {data.question}
         </h2>
@@ -66,9 +66,9 @@ const QuizCard = ({ data, onNext }) => {
               onClick={() => handleSelect(opt)}
               disabled={selected !== null}
               className={`w-full p-4 rounded-xl text-left border-2 transition-all flex justify-between items-center relative
-                ${selected === null 
-                  ? 'border-gray-200 hover:border-accent hover:bg-orange-50' 
-                  : selected === opt 
+                ${selected === null
+                  ? 'border-gray-200 hover:border-accent hover:bg-orange-50'
+                  : selected === opt
                     ? (isCorrect ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50')
                     : 'border-gray-100 text-gray-400 opacity-50'
                 }

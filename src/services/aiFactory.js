@@ -39,7 +39,7 @@ Structure:
   },
   "mermaid_tips": "CRITICAL: 1. Use 'graph TD'. 2. ALL node texts MUST be in double quotes (e.g. A[\"Text\"]). 3. NO special chars like () [] {} inside the quotes. 4. Keep it simple.",
   "summary_bullet_points": ["Point 1", "Point 2"],
-  "short_summary": "A concise 2-3 sentence summary of the key concepts covered in this activity.",
+  "short_summary": "A list of bullet-pointed key facts and important details from this text, designed for exam review. Use symbols like • for bullets.",
   "visual_concept": "Description of a visual scene representing the key concept."
 }
 `;

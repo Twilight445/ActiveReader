@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { set as setDb, get as getDb, del as delDb } from 'idb-keyval';
 import { db } from '../firebase';
-import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import useSettingsStore from './useSettingsStore';
 
 const useAppStore = create(
@@ -319,17 +319,48 @@ const useAppStore = create(
           } else {
             const fileBlob = await getDb(`pdf_${bookId}`);
             if (fileBlob) set({ activeBook: { ...book, fileData: fileBlob } });
-            else { alert("Local file missing."); set({ currentScreen: 'DASHBOARD' }); }
+            else {
+              // Local file missing strategy: Don't boot to dashboard.
+              // Set flag so BookViewer can show recovery UI.
+              set({ activeBook: { ...book, fileData: null, isMissingFile: true } });
+            }
           }
+        }
+      },
+
+      recoverLocalBook: async (file) => {
+        const state = get();
+        const bookId = state.activeBook?.id;
+        if (!bookId) return;
+
+        try {
+          await setDb(`pdf_${bookId}`, file);
+          set({ activeBook: { ...state.activeBook, fileData: file, isMissingFile: false } });
+        } catch (e) {
+          alert("Recovery failed: " + e.message);
         }
       },
 
       deleteBook: async (bookId) => {
         const state = get();
         const book = state.library.find(b => b.id === bookId);
+
+        // 1. Delete Local File
         if (book && book.type === 'LOCAL') await delDb(`pdf_${bookId}`);
 
-        // Note: We don't delete from cloud here to prevent accidental data loss across devices
+        // 2. Delete from Cloud (Firestore)
+        const syncId = useSettingsStore.getState().syncId;
+        if (syncId) {
+          try {
+            // Delete Book Metadata
+            await deleteDoc(doc(db, "sync_users", syncId, "books", bookId.toString()));
+            console.log(`🗑️ Deleted book ${bookId} from Cloud.`);
+          } catch (e) {
+            console.error("Failed to delete from cloud", e);
+          }
+        }
+
+        // 3. Update State
         set((state) => ({
           library: state.library.filter(b => b.id !== bookId),
           activeBook: null

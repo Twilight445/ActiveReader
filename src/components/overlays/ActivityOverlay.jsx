@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trophy, ChevronLeft, Bookmark, Heart } from 'lucide-react'; // Added Icons
+import { X, Trophy, ChevronLeft, ChevronRight, Bookmark, Heart } from 'lucide-react'; // Added Icons
 
 // Services & Store
 import { generateImageBackground } from '../../services/imageGenService';
@@ -167,6 +167,16 @@ const ActivityOverlay = ({ data, bookId, onClose }) => {
         </button>
       </div>
 
+      {/* BOTTOM CONTROL - NEXT / SKIP */}
+      <div className="fixed bottom-6 right-6 z-[70]">
+        <button
+          onClick={() => handleNext(false)}
+          className="bg-black/80 text-white backdrop-blur-md px-6 py-3 rounded-full font-bold flex items-center gap-2 hover:bg-black transition shadow-lg"
+        >
+          {step === tasks.length - 1 ? 'Finish' : 'Next'} <ChevronRight size={20} />
+        </button>
+      </div>
+
       {/* Progress Dots */}
       <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[60] flex gap-1.5 pointer-events-none">
         {tasks.map((_, i) => (
@@ -186,7 +196,7 @@ const ActivityOverlay = ({ data, bookId, onClose }) => {
               </div>
               <h2 className="text-2xl font-bold text-gray-800">{currentTask.title}</h2>
             </div>
-            <p className="text-gray-600 text-lg leading-relaxed mb-8">{currentTask.summary}</p>
+            <p className="text-gray-600 text-lg leading-relaxed mb-8 whitespace-pre-line">{currentTask.summary}</p>
             <button onClick={() => handleNext(true)} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
               Continue
             </button>

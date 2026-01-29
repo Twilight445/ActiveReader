@@ -6,9 +6,9 @@ const ConceptMap = ({ data, onNext }) => {
   const chartRef = useRef(null);
   const modalRef = useRef(null); // The div that holds the SVG
   const containerRef = useRef(null); // The scrollable viewing window
-  
+
   const [isFullscreen, setIsFullscreen] = useState(false);
-  
+
   // --- PAN & ZOOM STATE ---
   const [scale, setScale] = useState(1.0);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -35,7 +35,7 @@ const ConceptMap = ({ data, onNext }) => {
   const renderChart = (element) => {
     if (element && data.mermaid_code) {
       try {
-        element.innerHTML = ''; 
+        element.innerHTML = '';
         const id = `mermaid-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         mermaid.render(id, data.mermaid_code).then(({ svg }) => {
           if (element) {
@@ -80,6 +80,24 @@ const ConceptMap = ({ data, onNext }) => {
     setIsDragging(false);
   };
 
+  const handleTouchStart = (e) => {
+    if (!isFullscreen) return;
+    setIsDragging(true);
+    const touch = e.touches[0];
+    setDragStart({ x: touch.clientX - position.x, y: touch.clientY - position.y });
+  };
+
+  const handleTouchMove = (e) => {
+    if (isDragging && isFullscreen) {
+      const touch = e.touches[0];
+      setPosition({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y
+      });
+      e.preventDefault(); // Prevent scrolling while dragging
+    }
+  };
+
   return (
     <>
       {/* --- NORMAL CARD VIEW --- */}
@@ -98,8 +116,8 @@ const ConceptMap = ({ data, onNext }) => {
 
           <div className="relative w-full group border border-gray-200 rounded-xl bg-white">
             <div ref={chartRef} className="w-full overflow-hidden flex justify-center py-8 px-4 max-h-[300px]" />
-            <div 
-              className="absolute inset-0 flex items-center justify-center bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-xl" 
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-xl"
               onClick={() => setIsFullscreen(true)}
             >
               <button className="bg-white text-teal-700 px-6 py-3 rounded-full font-bold shadow-xl flex items-center gap-2 transform hover:scale-105 transition border border-teal-100">
@@ -108,7 +126,7 @@ const ConceptMap = ({ data, onNext }) => {
             </div>
           </div>
 
-          <button 
+          <button
             onClick={() => onNext(true)}
             className="mt-6 flex items-center justify-center gap-2 w-full py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition shadow-md"
           >
@@ -120,7 +138,7 @@ const ConceptMap = ({ data, onNext }) => {
       {/* --- FULLSCREEN MODAL --- */}
       {isFullscreen && (
         <div className="fixed inset-0 z-[100] bg-gray-100 flex flex-col animate-in fade-in duration-200 select-none">
-          
+
           {/* Top Bar */}
           <div className="bg-teal-600 p-4 text-white flex justify-between items-center shadow-md z-20">
             <h3 className="font-bold flex items-center gap-2"><Network /> {data.title}</h3>
@@ -128,29 +146,32 @@ const ConceptMap = ({ data, onNext }) => {
               <X size={24} />
             </button>
           </div>
-          
+
           {/* DRAGGABLE VIEWPORT */}
-          <div 
+          <div
             ref={containerRef}
             className={`flex-1 overflow-hidden relative bg-gray-50 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleMouseUp}
           >
-             {/* Instructions Overlay */}
-             <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur text-xs px-3 py-1 rounded-full text-gray-500 pointer-events-none border border-gray-200 flex items-center gap-2">
-                <Move size={12}/> Click & Drag to Move
-             </div>
+            {/* Instructions Overlay */}
+            <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur text-xs px-3 py-1 rounded-full text-gray-500 pointer-events-none border border-gray-200 flex items-center gap-2">
+              <Move size={12} /> Click & Drag to Move
+            </div>
 
-             {/* The Chart Container */}
-             <div 
-                ref={modalRef} 
-                className="absolute origin-center transition-transform duration-75 ease-linear w-full h-full flex items-center justify-center p-20"
-                style={{ 
-                  transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                }} 
-             />
+            {/* The Chart Container */}
+            <div
+              ref={modalRef}
+              className="absolute origin-center transition-transform duration-75 ease-linear w-full h-full flex items-center justify-center p-20"
+              style={{
+                transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              }}
+            />
           </div>
 
           {/* CONTROLS */}
@@ -169,7 +190,7 @@ const ConceptMap = ({ data, onNext }) => {
 
             <div className="w-[1px] h-6 bg-white/30 mx-2"></div>
 
-            <button onClick={() => { setScale(1.0); setPosition({x:0,y:0}); }} className="hover:text-teal-400 transition" title="Reset View">
+            <button onClick={() => { setScale(1.0); setPosition({ x: 0, y: 0 }); }} className="hover:text-teal-400 transition" title="Reset View">
               <RotateCcw size={20} />
             </button>
           </div>
