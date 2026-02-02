@@ -96,6 +96,12 @@ const SettingsOverlay = ({ onClose }) => {
                             </button>
                         </div>
                         <div className="flex items-center justify-between">
+                            <span className="font-semibold text-gray-700">Enable Timeline Activity</span>
+                            <button onClick={settings.toggleTimeline} className={`w-12 h-6 rounded-full transition-colors relative ${settings.enableTimeline ? 'bg-green-500' : 'bg-gray-300'}`}>
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.enableTimeline ? 'left-7' : 'left-1'}`} />
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between">
                             <span className="font-semibold text-gray-700">Enable Image Generation (Freepik)</span>
                             <button
                                 onClick={() => setForm(f => ({ ...f, imageGenProvider: f.imageGenProvider === 'FREEPIK' ? 'NONE' : 'FREEPIK' }))}
@@ -103,6 +109,89 @@ const SettingsOverlay = ({ onClose }) => {
                             >
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.imageGenProvider === 'FREEPIK' ? 'left-7' : 'left-1'}`} />
                             </button>
+                        </div>
+                    </div>
+
+                    {/* Zen Reader Settings */}
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-xl space-y-4 border border-emerald-100 shadow-sm">
+                        <div className="flex items-center gap-2 text-emerald-700 font-bold uppercase tracking-wide text-xs">
+                            <span className="bg-emerald-600 text-white p-1 rounded-md shadow-sm">📖</span> Zen Reader Settings
+                        </div>
+
+                        {/* Zen Mode Toggle */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <span className="font-semibold text-gray-700 text-sm">Zen Mode (Kindle-style)</span>
+                                <p className="text-xs text-gray-500 mt-0.5">Hide controls, tap to navigate</p>
+                            </div>
+                            <button
+                                onClick={settings.toggleZenMode}
+                                className={`w-12 h-6 rounded-full transition-colors relative ${settings.zenMode ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.zenMode ? 'left-7' : 'left-1'}`} />
+                            </button>
+                        </div>
+
+                        {/* Theme Selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-600">Reader Theme</label>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[
+                                    { id: 'paper', label: 'Paper', bg: '#FAFAF8', text: '#1A1A1A' },
+                                    { id: 'sepia', label: 'Sepia', bg: '#F4ECD8', text: '#3D3222' },
+                                    { id: 'dark', label: 'Dark', bg: '#1C1C1E', text: '#E5E5E5' },
+                                    { id: 'night', label: 'Night', bg: '#1A1612', text: '#D4C4A8' },
+                                ].map(t => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => settings.setReaderTheme(t.id)}
+                                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${settings.readerTheme === t.id
+                                                ? 'ring-2 ring-emerald-500 ring-offset-1'
+                                                : 'hover:scale-105'
+                                            }`}
+                                        style={{ backgroundColor: t.bg }}
+                                    >
+                                        <span className="text-xs font-medium" style={{ color: t.text }}>{t.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Font Selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-600">Reading Font</label>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[
+                                    { id: 'Literata', label: 'Literata' },
+                                    { id: 'Georgia', label: 'Georgia' },
+                                    { id: 'OpenDyslexic', label: 'Dyslexic' },
+                                    { id: 'System', label: 'System' },
+                                ].map(f => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => settings.setReaderFont(f.id)}
+                                        className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${settings.readerFont === f.id
+                                                ? 'bg-emerald-500 text-white shadow'
+                                                : 'bg-white text-gray-700 border border-gray-200 hover:border-emerald-300'
+                                            }`}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Font Size Slider */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-xs font-semibold text-gray-600">
+                                <span>Font Size: {settings.fontSize}px</span>
+                            </div>
+                            <input
+                                type="range" min="14" max="28" step="2"
+                                value={settings.fontSize}
+                                onChange={(e) => settings.setFontSize(parseInt(e.target.value))}
+                                className="w-full h-2 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                            />
                         </div>
                     </div>
 

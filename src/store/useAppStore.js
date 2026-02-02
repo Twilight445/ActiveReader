@@ -23,10 +23,20 @@ const useAppStore = create(
       favorites: [],
       highlights: [],
       userSummaries: [],
+      userSummaries: [],
+      bookmarks: [], // [{ bookId, page, timestamp }]
       gallery: [],
       addToGallery: (item) => set((state) => ({
         gallery: [{ ...item, bookId: item.bookId || state.activeBook?.id?.toString() }, ...state.gallery]
       })),
+      toggleBookmark: (bookId, page) => set((state) => {
+        const exists = state.bookmarks.find(b => b.bookId === bookId && b.page === page);
+        if (exists) {
+          return { bookmarks: state.bookmarks.filter(b => b.bookId !== bookId || b.page !== page) };
+        } else {
+          return { bookmarks: [...state.bookmarks, { bookId, page, timestamp: Date.now() }] };
+        }
+      }),
       updateGalleryImage: (id, url, status = 'success') => set((state) => ({
         gallery: state.gallery.map(img => img.id === id ? { ...img, url, status } : img)
       })),

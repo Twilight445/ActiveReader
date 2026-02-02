@@ -1,0 +1,282 @@
+/* ================================
+   KINDLE-STYLE READER THEMES
+   ================================ */
+
+/* Theme Variables */
+:root {
+    --reader-bg: #FAFAF8;
+    --reader-text: #1A1A1A;
+    --reader-text-muted: #666666;
+}
+
+/* Paper White (Default) */
+.theme-paper {
+    --reader-bg: #FAFAF8;
+    --reader-text: #1A1A1A;
+    --reader-text-muted: #666666;
+}
+
+/* Deep Charcoal (not pure black for eye comfort) */
+.theme-dark {
+    --reader-bg: #1C1C1E;
+    --reader-text: #E5E5E5;
+    --reader-text-muted: #999999;
+}
+
+/* Warm Sepia */
+.theme-sepia {
+    --reader-bg: #F4ECD8;
+    --reader-text: #3D3222;
+    --reader-text-muted: #6B5B4A;
+}
+
+/* Blue-light Night Mode */
+.theme-night {
+    --reader-bg: #1A1612;
+    --reader-text: #D4C4A8;
+    --reader-text-muted: #8A7A64;
+}
+
+/* ================================
+   ZEN READER CONTAINER
+   ================================ */
+
+.zen-reader {
+    background: var(--reader-bg);
+    color: var(--reader-text);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    min-height: 100vh;
+}
+
+/* ================================
+   TYPOGRAPHY FONTS
+   ================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&display=swap');
+
+.font-literata {
+    font-family: 'Literata', Georgia, serif;
+}
+
+.font-georgia {
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+.font-system {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* OpenDyslexic for accessibility */
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+.font-dyslexic {
+    font-family: 'OpenDyslexic', Arial, sans-serif;
+    letter-spacing: 0.05em;
+    word-spacing: 0.15em;
+}
+
+/* ================================
+   PAGE STYLING
+   ================================ */
+
+.zen-page {
+    background: var(--reader-bg);
+    transition: all 0.3s ease;
+}
+
+/* Smooth text rendering */
+.zen-page .react-pdf__Page__textContent {
+    color: var(--reader-text) !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Margin Variants */
+.margin-narrow .react-pdf__Page {
+    padding: 0 8px;
+}
+
+.margin-medium .react-pdf__Page {
+    padding: 0 24px;
+}
+
+.margin-wide .react-pdf__Page {
+    padding: 0 48px;
+}
+
+/* ================================
+   PAGE TURN ANIMATIONS
+   ================================ */
+
+.page-turn-enter {
+    opacity: 0;
+    transform: translateX(30px);
+}
+
+.page-turn-enter-active {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 250ms ease-out, transform 250ms ease-out;
+}
+
+.page-turn-exit {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.page-turn-exit-active {
+    opacity: 0;
+    transform: translateX(-30px);
+    transition: opacity 200ms ease-in, transform 200ms ease-in;
+}
+
+/* Fade animation for controls */
+.controls-fade-enter {
+    opacity: 0;
+}
+
+.controls-fade-enter-active {
+    opacity: 1;
+    transition: opacity 200ms ease-out;
+}
+
+.controls-fade-exit {
+    opacity: 1;
+}
+
+.controls-fade-exit-active {
+    opacity: 0;
+    transition: opacity 150ms ease-in;
+}
+
+/* ================================
+   TAP ZONES (invisible hitboxes)
+   ================================ */
+
+.tap-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 10;
+    cursor: pointer;
+    /* Debug: uncomment to visualize */
+    /* background: rgba(255, 0, 0, 0.1); */
+}
+
+.tap-zone-left {
+    left: 0;
+    width: 20%;
+}
+
+.tap-zone-center {
+    left: 20%;
+    right: 20%;
+    width: 60%;
+}
+
+.tap-zone-right {
+    right: 0;
+    width: 20%;
+}
+
+/* ================================
+   RECALL MODE
+   ================================ */
+
+.recall-blur {
+    filter: blur(8px);
+    transition: filter 0.3s ease;
+    cursor: pointer;
+    user-select: none;
+}
+
+.recall-blur:hover {
+    filter: blur(6px);
+}
+
+.recall-revealed {
+    filter: blur(0);
+    animation: revealPulse 0.5s ease-out;
+}
+
+@keyframes revealPulse {
+    0% {
+        transform: scale(1.02);
+        background-color: rgba(99, 102, 241, 0.1);
+    }
+
+    100% {
+        transform: scale(1);
+        background-color: transparent;
+    }
+}
+
+/* ================================
+   PROGRESS BAR
+   ================================ */
+
+.zen-progress {
+    height: 2px;
+    background: var(--reader-text-muted);
+    opacity: 0.3;
+    transition: opacity 0.3s ease;
+}
+
+.zen-progress:hover {
+    opacity: 0.6;
+    height: 4px;
+}
+
+.zen-progress-fill {
+    height: 100%;
+    background: var(--reader-text);
+    transition: width 0.3s ease;
+}
+
+/* ================================
+   BOOKMARK INDICATOR
+   ================================ */
+
+.bookmark-indicator {
+    position: absolute;
+    top: 0;
+    right: 24px;
+    width: 24px;
+    height: 40px;
+    background: linear-gradient(135deg, #EF4444, #DC2626);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%);
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+    z-index: 20;
+}
+
+.bookmark-indicator.visible {
+    transform: translateY(0);
+}
+
+/* ================================
+   SCROLLBAR (for continuous scroll)
+   ================================ */
+
+.zen-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.zen-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.zen-scroll::-webkit-scrollbar-thumb {
+    background: var(--reader-text-muted);
+    opacity: 0.3;
+    border-radius: 4px;
+}
+
+.zen-scroll::-webkit-scrollbar-thumb:hover {
+    opacity: 0.5;
+}

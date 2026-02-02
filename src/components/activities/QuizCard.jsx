@@ -68,21 +68,38 @@ const QuizCard = ({ data, onNext }) => {
               className={`w-full p-4 rounded-xl text-left border-2 transition-all flex justify-between items-center relative
                 ${selected === null
                   ? 'border-gray-200 hover:border-accent hover:bg-orange-50'
-                  : selected === opt
-                    ? (isCorrect ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50')
-                    : 'border-gray-100 text-gray-400 opacity-50'
+                  : opt === data.answer || (data.answer && opt.toLowerCase().startsWith(data.answer.toLowerCase()))
+                    ? 'border-green-500 bg-green-50' // Highlight correct answer always after selection
+                    : selected === opt
+                      ? 'border-red-500 bg-red-50' // Highlight wrong answer only if selected
+                      : 'border-gray-100 text-gray-400 opacity-50'
                 }
               `}
             >
               <span className="font-medium pr-8">{opt}</span>
-              {selected === opt && (
+              {selected !== null && (opt === data.answer || (data.answer && opt.toLowerCase().startsWith(data.answer.toLowerCase()))) && (
                 <div className="absolute right-4">
-                  {isCorrect ? <CheckCircle className="text-green-600" /> : <XCircle className="text-red-600" />}
+                  <CheckCircle className="text-green-600 animate-in zoom-in" />
+                </div>
+              )}
+              {selected === opt && !(opt === data.answer || (data.answer && opt.toLowerCase().startsWith(data.answer.toLowerCase()))) && (
+                <div className="absolute right-4">
+                  <XCircle className="text-red-600 animate-in zoom-in" />
                 </div>
               )}
             </button>
           ))}
         </div>
+
+        {/* Explanation Area */}
+        {selected !== null && data.explanation && (
+          <div className="mt-6 p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 animate-in slide-in-from-top-2 duration-500">
+            <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1">Explanation</h4>
+            <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed italic">
+              {data.explanation}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

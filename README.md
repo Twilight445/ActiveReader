@@ -22,9 +22,13 @@
 *   **Auto-Generated Activities**:
     *   **🧠 Micro-Quizzes**: MCQ sets to test understanding of the pages you just read.
     *   **🗺️ Concept Maps**: Visual Mermaid.js flowcharts generated instantly to explain complex topics.
-    *   **⏳ Timeline Games**: Interactive drag-and-drop history timelines.
+    *   **⏳ Timeline Games**: Interactive drag-and-drop history timelines. **(Toggleable in Settings)**
 *   **🍌 "Nano Banana" Visualization**: The AI imagines a visual scene to represent abstract concepts and generates a prompt for image creation.
-*   **📝 Quick Recap**: Concise 2-3 sentence summaries appear after each activity for rapid review.
+*   **📝 Quick Recap**: Concise, bullet-pointed summaries appear after each activity for rapid review. Now scrollable for easy reading on any screen.
+
+### ⚙️ Customizable Learning
+*   **Feature Toggles**: Enable or disable specific activities like Timeline Games via the Settings menu.
+*   **AI Flexibility**: Choose your preferred AI provider (Gemini, Pawan, etc.) and configure context limits.
 
 ### ☁️ Robust Cloud Sync (Firebase)
 *   **Cross-Device Harmony**: Start reading on your laptop, continue on your tablet.
@@ -98,12 +102,6 @@ npm run dev
 ```
 
 Open `http://localhost:5173` to start reading!
-
----
-
-## 📸 Screen Gallery
-
-*(Add screenshots of the Dashboard, Reader View, and Notebook Overlay here)*
 
 ---
 

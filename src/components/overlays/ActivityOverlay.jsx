@@ -4,6 +4,7 @@ import { X, Trophy, ChevronLeft, ChevronRight, Bookmark, Heart } from 'lucide-re
 // Services & Store
 import { generateImageBackground } from '../../services/imageGenService';
 import useAppStore from '../../store/useAppStore';
+import useSettingsStore from '../../store/useSettingsStore';
 
 // Components
 import QuizCard from '../activities/QuizCard';
@@ -13,6 +14,8 @@ import ConceptMap from '../activities/ConceptMap';
 
 const ActivityOverlay = ({ data, bookId, onClose }) => {
   const { addXP, addMistake, toggleFavorite, favorites } = useAppStore();
+  const { enableTimeline } = useSettingsStore();
+
   const [step, setStep] = useState(0);
   const [score, setScore] = useState(0);
 
@@ -30,7 +33,7 @@ const ActivityOverlay = ({ data, bookId, onClose }) => {
       });
     }
 
-    const timelines = (data.timeline || []).map(t => ({ ...t, type: 'timeline', bookId }));
+    const timelines = (enableTimeline && data.timeline) ? (data.timeline || []).map(t => ({ ...t, type: 'timeline', bookId })) : [];
 
     let mapTasks = [];
     if (data.concept_map) {
@@ -138,7 +141,7 @@ const ActivityOverlay = ({ data, bookId, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm overflow-y-auto overflow-x-hidden">
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start py-8 px-4">
 
       {/* TOP CONTROLS - Fixed to Viewport */}
       <div className="fixed top-4 left-4 z-[70] flex gap-3">
@@ -189,15 +192,119 @@ const ActivityOverlay = ({ data, bookId, onClose }) => {
         {currentTask?.type === 'concept_map' ? (
           <ConceptMap data={currentTask} onNext={handleNext} />
         ) : currentTask?.type === 'summary' ? (
-          <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full">
-                <Bookmark size={24} />
+          <div className="w-full max-w-2xl animate-in fade-in zoom-in duration-300">
+            {/* Summary Header */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center p-4 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg mb-4">
+                <Bookmark size={32} className="text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-800">{currentTask.title}</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">{currentTask.title || "Quick Recap"}</h2>
+              <p className="text-white/70">Key insights from your reading</p>
             </div>
-            <p className="text-gray-600 text-lg leading-relaxed mb-8 whitespace-pre-line">{currentTask.summary}</p>
-            <button onClick={() => handleNext(true)} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+
+            {/* Summary Cards Grid */}
+            <div className="space-y-4 mb-6 max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
+              {(() => {
+                // Parse summary into categories
+                const lines = currentTask.summary.split('\n').filter(l => l.trim());
+                const dates = [];
+                const facts = [];
+                const events = [];
+
+                lines.forEach(line => {
+                  const trimmed = line.trim().replace(/^[-*•]\s*/, '');
+                  // Check for dates (years, specific dates)
+                  if (/\b(1[0-9]{3}|2[0-9]{3})\b/.test(trimmed) || /\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/i.test(trimmed)) {
+                    dates.push(trimmed);
+                  } else if (trimmed.toLowerCase().includes('event') || trimmed.toLowerCase().includes('war') || trimmed.toLowerCase().includes('battle') || trimmed.toLowerCase().includes('movement')) {
+                    events.push(trimmed);
+                  } else if (trimmed.length > 5) {
+                    facts.push(trimmed);
+                  }
+                });
+
+                // If no categorization worked, put all in facts
+                if (dates.length === 0 && events.length === 0) {
+                  lines.forEach(l => facts.push(l.trim().replace(/^[-*•]\s*/, '')));
+                }
+
+                return (
+                  <>
+                    {/* Key Dates Card */}
+                    {dates.length > 0 && (
+                      <div className="bg-gradient-to-br from-blue-50 to-blue-100/80 p-5 rounded-2xl border border-blue-200/50 shadow-sm backdrop-blur-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="p-2 bg-blue-500 rounded-xl">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <h3 className="font-bold text-blue-800 text-lg">Key Dates</h3>
+                        </div>
+                        <ul className="space-y-2">
+                          {dates.slice(0, 5).map((item, i) => (
+                            <li key={i} className="flex items-start gap-3 text-blue-900">
+                              <span className="text-blue-400 mt-1">•</span>
+                              <span className="text-sm leading-relaxed">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Important Facts Card */}
+                    {facts.length > 0 && (
+                      <div className="bg-gradient-to-br from-amber-50 to-orange-100/80 p-5 rounded-2xl border border-amber-200/50 shadow-sm backdrop-blur-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="p-2 bg-amber-500 rounded-xl">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                          </div>
+                          <h3 className="font-bold text-amber-800 text-lg">Important Facts</h3>
+                        </div>
+                        <ul className="space-y-2">
+                          {facts.slice(0, 6).map((item, i) => (
+                            <li key={i} className="flex items-start gap-3 text-amber-900">
+                              <span className="text-amber-400 mt-1">•</span>
+                              <span className="text-sm leading-relaxed">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Key Events Card */}
+                    {events.length > 0 && (
+                      <div className="bg-gradient-to-br from-purple-50 to-violet-100/80 p-5 rounded-2xl border border-purple-200/50 shadow-sm backdrop-blur-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="p-2 bg-purple-500 rounded-xl">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                            </svg>
+                          </div>
+                          <h3 className="font-bold text-purple-800 text-lg">Key Events</h3>
+                        </div>
+                        <ul className="space-y-2">
+                          {events.slice(0, 5).map((item, i) => (
+                            <li key={i} className="flex items-start gap-3 text-purple-900">
+                              <span className="text-purple-400 mt-1">•</span>
+                              <span className="text-sm leading-relaxed">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Continue Button */}
+            <button
+              onClick={() => handleNext(true)}
+              className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+            >
               Continue
             </button>
           </div>
