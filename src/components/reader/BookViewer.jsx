@@ -40,6 +40,8 @@ const BookViewer = () => {
   const [isScrubbing, setIsScrubbing] = useState(false); // Track if user is dragging slider
   const [sliderValue, setSliderValue] = useState(null); // Local slider state for smooth dragging
   const [generationMode, setGenerationMode] = useState(null); // 'FOREGROUND' or 'BACKGROUND'
+  const [showGoToPage, setShowGoToPage] = useState(false); // Go to Page modal
+  const [goToPageInput, setGoToPageInput] = useState(''); // Go to Page input value
 
   // Tools State
   const [selection, setSelection] = useState(null);
@@ -537,6 +539,42 @@ const BookViewer = () => {
         </div>
       </div>
 
+      {/* FLOATING VERTICAL PAGE SCROLLER - Right side */}
+      {numPages > 1 && (
+        <div className="fixed right-2 top-1/2 -translate-y-1/2 z-40 opacity-30 hover:opacity-100 transition-opacity duration-300 group">
+          {/* Current page indicator */}
+          <div className="absolute -left-16 top-1/2 -translate-y-1/2 bg-indigo-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            Page {sliderValue !== null ? sliderValue : currentPage}
+          </div>
+
+          {/* Vertical slider */}
+          <div className="relative h-64 w-8 bg-gray-200 dark:bg-gray-700 rounded-full shadow-lg flex items-center justify-center">
+            <input
+              type="range"
+              min="1"
+              max={numPages}
+              value={sliderValue !== null ? sliderValue : currentPage}
+              onInput={handleSliderChange}
+              onChange={handleSliderChange}
+              onMouseUp={handleSliderCommit}
+              onTouchEnd={handleSliderCommit}
+              className="h-56 w-2 appearance-none cursor-pointer accent-indigo-600"
+              style={{
+                writingMode: 'vertical-lr',
+                direction: 'rtl',
+                background: 'transparent'
+              }}
+            />
+          </div>
+
+          {/* Page numbers */}
+          <div className="flex flex-col justify-between h-64 absolute left-0 top-0 -ml-5 text-xs font-mono text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span>1</span>
+            <span>{numPages}</span>
+          </div>
+        </div>
+      )}
+
       {/* FOOTER CONTROLS & SLIDER - Only shown when NOT in Zen mode */}
       {
         !zenMode && (
@@ -563,9 +601,68 @@ const BookViewer = () => {
 
             <div className="flex justify-between items-center">
               <button onClick={() => updateBookProgress(currentPage - 1, numPages)} disabled={currentPage <= 1} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><ChevronLeft size={20} /> <span className="hidden md:inline font-bold">Prev</span></button>
-              <span className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-4 py-1 rounded-full">{sliderValue !== null ? sliderValue : currentPage} / {numPages || '--'}</span>
+
+              {/* Clickable Page Number - Opens Go to Page */}
+              <button
+                onClick={() => {
+                  setGoToPageInput(String(currentPage));
+                  setShowGoToPage(true);
+                }}
+                className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-4 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                title="Click to jump to page"
+              >
+                {sliderValue !== null ? sliderValue : currentPage} / {numPages || '--'}
+              </button>
+
               <button onClick={() => updateBookProgress(currentPage + 1, numPages)} disabled={currentPage >= numPages} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><span className="hidden md:inline font-bold">Next</span> <ChevronRight size={20} /></button>
             </div>
+
+            {/* Go to Page Modal */}
+            {showGoToPage && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowGoToPage(false)}>
+                <div
+                  className="bg-white dark:bg-gray-800 rounded-xl p-6 w-80 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Go to Page</h3>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max={numPages || 1}
+                      value={goToPageInput}
+                      onChange={(e) => setGoToPageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const page = parseInt(goToPageInput);
+                          if (page >= 1 && page <= numPages) {
+                            updateBookProgress(page, numPages);
+                            setShowGoToPage(false);
+                          }
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 border rounded-lg text-center text-lg font-bold focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => {
+                        const page = parseInt(goToPageInput);
+                        if (page >= 1 && page <= numPages) {
+                          updateBookProgress(page, numPages);
+                          setShowGoToPage(false);
+                        }
+                      }}
+                      className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition"
+                    >
+                      Go
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                    Enter a page number (1-{numPages})
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Manual Chapter Finish Button */}
             {manualChapterMode && (

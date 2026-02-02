@@ -395,9 +395,14 @@ const useAppStore = create(
       },
 
       // ... (Keep mistakes, highlights, userSummaries, etc.) ...
-      updateBookProgress: (page, total) => set((state) => {
+      updateBookProgress: (page, total, epubLocation) => set((state) => {
         if (!state.activeBook) return {};
-        const updatedBook = { ...state.activeBook, progress: page, totalPages: total || state.activeBook.totalPages };
+        const updatedBook = {
+          ...state.activeBook,
+          progress: page !== null ? page : state.activeBook.progress,
+          totalPages: total || state.activeBook.totalPages,
+          epubLocation: epubLocation !== undefined ? epubLocation : state.activeBook.epubLocation
+        };
         const updatedLibrary = state.library.map((b) => b.id === updatedBook.id ? updatedBook : b);
         return { activeBook: updatedBook, library: updatedLibrary };
       }),
