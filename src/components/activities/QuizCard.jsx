@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, ChevronRight } from 'lucide-react';
 
 const QuizCard = ({ data, onNext }) => {
   const [selected, setSelected] = useState(null);
@@ -41,10 +41,13 @@ const QuizCard = ({ data, onNext }) => {
       (data.answer && option.toLowerCase().startsWith(data.answer.toLowerCase()));
 
     setIsCorrect(correct);
+    // Removed auto-advance - user must click Next button
+  };
 
-    setTimeout(() => {
-      onNext(correct);
-    }, 1500);
+  const handleNextClick = () => {
+    if (selected !== null) {
+      onNext(isCorrect);
+    }
   };
 
   return (
@@ -99,6 +102,16 @@ const QuizCard = ({ data, onNext }) => {
               {data.explanation}
             </p>
           </div>
+        )}
+
+        {/* Next Button - Only shown after selection */}
+        {selected !== null && (
+          <button
+            onClick={handleNextClick}
+            className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center gap-2 animate-in slide-in-from-bottom duration-300"
+          >
+            Next <ChevronRight size={20} />
+          </button>
         )}
       </div>
     </div>

@@ -51,14 +51,18 @@ const CheckpointPrompt = ({ show, onStartActivity, onSkip, page, isGenerating, h
           `}
         >
           <BrainCircuit size={20} />
-          Generate in Background
+          Start Activities
         </button>
 
         {/* Secondary Action: Save & Skip */}
         <button
           onClick={() => {
-            handleSave(); // Save notes
-            onSkip();
+            const saved = handleSave(); // Attempt save
+            if (saved) {
+              setTimeout(onSkip, 500); // Wait for UI feedback then skip
+            } else {
+              onSkip(); // Just skip if empty/invalid
+            }
           }}
           disabled={charCount < 5}
           className="w-full py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center justify-center gap-2"

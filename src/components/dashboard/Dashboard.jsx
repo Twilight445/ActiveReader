@@ -98,14 +98,14 @@ const Dashboard = () => {
               {/* LOCAL UPLOAD */}
               <label className={`flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg cursor-pointer transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'}`}>
                 <Smartphone size={14} /> Local
-                <input type="file" accept=".pdf" onChange={handleLocalUpload} className="hidden" />
+                <input type="file" accept=".pdf,.epub" onChange={handleLocalUpload} className="hidden" />
               </label>
 
               {/* CLOUD UPLOAD */}
               <label className={`flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg cursor-pointer transition ${darkMode ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'}`}>
                 {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Cloud size={14} />}
                 {isUploading ? '...' : 'Cloud'}
-                <input type="file" accept=".pdf" onChange={handleCloudUpload} className="hidden" disabled={isUploading} />
+                <input type="file" accept=".pdf,.epub" onChange={handleCloudUpload} className="hidden" disabled={isUploading} />
               </label>
             </div>
           </div>

@@ -23,18 +23,23 @@ const useAppStore = create(
       favorites: [],
       highlights: [],
       userSummaries: [],
-      userSummaries: [],
       bookmarks: [], // [{ bookId, page, timestamp }]
       gallery: [],
       addToGallery: (item) => set((state) => ({
         gallery: [{ ...item, bookId: item.bookId || state.activeBook?.id?.toString() }, ...state.gallery]
       })),
-      toggleBookmark: (bookId, page) => set((state) => {
-        const exists = state.bookmarks.find(b => b.bookId === bookId && b.page === page);
+      toggleBookmark: (bookId, page, epubLocation = null) => set((state) => {
+        const exists = state.bookmarks.find(b =>
+          b.bookId === bookId && (page ? b.page === page : b.epubLocation === epubLocation)
+        );
         if (exists) {
-          return { bookmarks: state.bookmarks.filter(b => b.bookId !== bookId || b.page !== page) };
+          return {
+            bookmarks: state.bookmarks.filter(b =>
+              !(b.bookId === bookId && (page ? b.page === page : b.epubLocation === epubLocation))
+            )
+          };
         } else {
-          return { bookmarks: [...state.bookmarks, { bookId, page, timestamp: Date.now() }] };
+          return { bookmarks: [...state.bookmarks, { bookId, page, epubLocation, timestamp: Date.now() }] };
         }
       }),
       updateGalleryImage: (id, url, status = 'success') => set((state) => ({
@@ -101,9 +106,20 @@ const useAppStore = create(
       // --- 1. LOCAL UPLOAD (Offline) ---
       addBookToLibrary: async (file) => {
         const bookId = Date.now();
+        const isEpub = file.name.toLowerCase().endsWith('.epub');
+        const format = isEpub ? 'EPUB' : 'PDF';
         try {
-          await setDb(`pdf_${bookId}`, file);
-          const newBook = { id: bookId, title: file.name, type: 'LOCAL', progress: 1, totalPages: 0, lastRead: new Date().toISOString() };
+          await setDb(`${format.toLowerCase()}_${bookId}`, file);
+          const newBook = {
+            id: bookId,
+            title: file.name,
+            type: 'LOCAL',
+            format,
+            progress: isEpub ? null : 1,
+            epubLocation: isEpub ? null : undefined,
+            totalPages: 0,
+            lastRead: new Date().toISOString()
+          };
           set((state) => ({ library: [newBook, ...state.library], activeBook: { ...newBook, fileData: file }, currentScreen: 'READER' }));
 
           // Sync with Cloud
@@ -327,7 +343,8 @@ const useAppStore = create(
           if (book.type === 'CLOUD') {
             set({ activeBook: book });
           } else {
-            const fileBlob = await getDb(`pdf_${bookId}`);
+            const storagePrefix = book.format === 'EPUB' ? 'epub' : 'pdf';
+            const fileBlob = await getDb(`${storagePrefix}_${bookId}`);
             if (fileBlob) set({ activeBook: { ...book, fileData: fileBlob } });
             else {
               // Local file missing strategy: Don't boot to dashboard.
@@ -410,7 +427,7 @@ const useAppStore = create(
     {
       name: 'socsci-storage',
       partialize: (state) => ({
-        library: state.library, xp: state.xp, level: state.level, mistakes: state.mistakes, favorites: state.favorites, highlights: state.highlights, userSummaries: state.userSummaries
+        library: state.library, xp: state.xp, level: state.level, mistakes: state.mistakes, favorites: state.favorites, highlights: state.highlights, userSummaries: state.userSummaries, bookmarks: state.bookmarks, gallery: state.gallery
       }),
     }
   )

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Type, Palette, Bookmark, Settings, Sun, Moon, BookOpen, X, Minus, Plus, AlignLeft, AlignCenter, Eye, Brain, Clock } from 'lucide-react';
+import { ArrowLeft, Type, Palette, Bookmark, Settings, Sun, Moon, BookOpen, X, Minus, Plus, AlignLeft, AlignCenter, Eye, Brain, Clock, List } from 'lucide-react';
 import useSettingsStore from '../../store/useSettingsStore';
 import useAppStore from '../../store/useAppStore';
 
-const ZenControls = ({ visible, onClose, currentPage, numPages, onBack }) => {
-    const [activePanel, setActivePanel] = useState(null); // 'typography' | 'theme' | 'study' | null
+const ZenControls = ({ visible, onClose, currentPage, numPages, onBack, onNavigateToPage }) => {
+    const [activePanel, setActivePanel] = useState(null); // 'typography' | 'theme' | 'study' | 'chapters' | null
     const [autoHideTimer, setAutoHideTimer] = useState(null);
 
     // Settings
@@ -93,13 +93,22 @@ const ZenControls = ({ visible, onClose, currentPage, numPages, onBack }) => {
                             <Palette size={22} />
                         </button>
 
-                        {/* Study Tools (Recall Mode) */}
                         <button
                             onClick={() => setActivePanel(activePanel === 'study' ? null : 'study')}
                             className={`p-2 rounded-full transition ${activePanel === 'study' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
                         >
                             <Brain size={22} />
                         </button>
+
+                        {/* Chapters / Table of Contents */}
+                        {activeBook?.structure?.chapters && activeBook.structure.chapters.length > 0 && (
+                            <button
+                                onClick={() => setActivePanel(activePanel === 'chapters' ? null : 'chapters')}
+                                className={`p-2 rounded-full transition ${activePanel === 'chapters' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
+                            >
+                                <List size={22} />
+                            </button>
+                        )}
 
                         <div className="w-px h-6 bg-white/20 mx-1"></div>
 
@@ -264,6 +273,55 @@ const ZenControls = ({ visible, onClose, currentPage, numPages, onBack }) => {
 
                         <div className="space-y-4">
                             <p className="text-sm text-gray-500 dark:text-gray-400">More study tools coming soon!</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Chapters Panel (Table of Contents) */}
+            {activePanel === 'chapters' && activeBook?.structure?.chapters && (
+                <div className="absolute top-20 left-4 right-4 pointer-events-auto animate-in slide-in-from-top-2 duration-200 z-[90]">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-5 max-w-md mx-auto border border-gray-100 dark:border-gray-700 max-h-[60vh] flex flex-col">
+                        <div className="flex justify-between items-center mb-4 shrink-0">
+                            <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                <List size={18} className="text-emerald-500" /> Table of Contents
+                            </h3>
+                            <button onClick={() => setActivePanel(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-1 overflow-y-auto flex-1 pr-2">
+                            {activeBook.structure.chapters.map((chapter, idx) => (
+                                <button
+                                    key={idx}
+                                    onClick={() => {
+                                        if (onNavigateToPage && chapter.page) {
+                                            onNavigateToPage(chapter.page);
+                                            setActivePanel(null);
+                                            onClose();
+                                        }
+                                    }}
+                                    className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group
+                                        ${currentPage === chapter.page
+                                            ? 'bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-300 dark:border-emerald-700'
+                                            : 'hover:bg-gray-100 dark:hover:bg-gray-700 border-2 border-transparent'
+                                        }`}
+                                >
+                                    <span className={`font-medium text-sm truncate pr-2 ${currentPage === chapter.page
+                                            ? 'text-emerald-700 dark:text-emerald-300'
+                                            : 'text-gray-700 dark:text-gray-200'
+                                        }`}>
+                                        {chapter.title}
+                                    </span>
+                                    <span className={`text-xs font-mono shrink-0 ${currentPage === chapter.page
+                                            ? 'text-emerald-500'
+                                            : 'text-gray-400 group-hover:text-gray-600'
+                                        }`}>
+                                        p.{chapter.page}
+                                    </span>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>

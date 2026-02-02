@@ -1,3 +1,6 @@
+/* Google Fonts - Must be at the top */
+@import url('https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&display=swap');
+
 /* ================================
    KINDLE-STYLE READER THEMES
    ================================ */
@@ -51,8 +54,6 @@
 /* ================================
    TYPOGRAPHY FONTS
    ================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&display=swap');
 
 .font-literata {
     font-family: 'Literata', Georgia, serif;
@@ -279,4 +280,28 @@
 
 .zen-scroll::-webkit-scrollbar-thumb:hover {
     opacity: 0.5;
+}
+
+/* ================================
+   PAGE FLIP ANIMATION
+   ================================ */
+
+@keyframes pageFlipIn {
+    0% {
+        opacity: 0.6;
+        transform: rotateY(-10deg) scale(0.98);
+        transform-origin: center left;
+    }
+
+    100% {
+        opacity: 1;
+        transform: rotateY(0deg) scale(1);
+        transform-origin: center left;
+    }
+}
+
+.animate-page-flip {
+    animation: pageFlipIn 0.4s ease-out;
+    backface-visibility: hidden;
+    perspective: 1000px;
 }

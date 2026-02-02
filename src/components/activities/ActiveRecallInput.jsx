@@ -61,7 +61,7 @@ const ActiveRecallInput = ({ bookId, pageNumber, onComplete, customFooter }) => 
 
     const handleSave = () => {
         if (text.trim() === '•' || text.trim().length < 5) {
-            return; // Don't save empty or minimal content
+            return false; // Failed validation
         }
 
         addUserSummary(text, pageNumber, bookId);
@@ -71,6 +71,7 @@ const ActiveRecallInput = ({ bookId, pageNumber, onComplete, customFooter }) => 
         setTimeout(() => {
             if (onComplete) onComplete(true);
         }, 1500);
+        return true; // Success
     };
 
     return (

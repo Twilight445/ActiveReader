@@ -28,7 +28,7 @@ import ZenControls from './ZenControls';
 import '../../styles/ReaderThemes.css';
 
 const BookViewer = () => {
-  const { activeBook, updateBookProgress, setScreen, toggleActivity, addHighlight, highlights, deleteHighlight, isActivityOpen } = useAppStore();
+  const { activeBook, updateBookProgress, updateBookStructure, setScreen, toggleActivity, addHighlight, highlights, deleteHighlight, isActivityOpen } = useAppStore();
   /* Removed duplicate destructuring */
 
   const [numPages, setNumPages] = useState(null);
@@ -38,6 +38,7 @@ const BookViewer = () => {
   const [isPromptDismissed, setIsPromptDismissed] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [isScrubbing, setIsScrubbing] = useState(false); // Track if user is dragging slider
+  const [sliderValue, setSliderValue] = useState(null); // Local slider state for smooth dragging
   const [generationMode, setGenerationMode] = useState(null); // 'FOREGROUND' or 'BACKGROUND'
 
   // Tools State
@@ -128,10 +129,13 @@ const BookViewer = () => {
 
         if (structure && structure.startPage) {
           console.log("📍 Smart Start: Jumping to page", structure.startPage);
-          // Simple Alert/Toast could go here
+          // Save 'structure' to Store so chapters panel can display it
+          updateBookStructure(structure);
           // Jump to Start Page
           updateBookProgress(structure.startPage, numPages);
-          // TODO: Save 'structure' to Store so we don't run this again
+        } else if (structure && structure.chapters) {
+          // Even if no startPage, save chapters for TOC
+          updateBookStructure(structure);
         }
       }
     };
@@ -214,17 +218,6 @@ const BookViewer = () => {
     };
     canvas.addEventListener('mousemove', draw); canvas.addEventListener('mouseup', stop);
     canvas.addEventListener('touchmove', draw, { passive: false }); canvas.addEventListener('touchend', stop);
-  };
-
-  // --- SLIDER HANDLER ---
-  const handleSliderChange = (e) => {
-    setIsScrubbing(true);
-    updateBookProgress(parseInt(e.target.value), numPages);
-  };
-
-  const handleSliderCommit = (e) => {
-    setIsScrubbing(false);
-    updateBookProgress(parseInt(e.target.value), numPages);
   };
 
   // --- SMART AI HANDLER (VISION + TEXT) ---
@@ -421,6 +414,19 @@ const BookViewer = () => {
     }
   };
 
+  // --- SLIDER LOGIC ---
+  const handleSliderChange = (e) => {
+    setSliderValue(parseInt(e.target.value));
+  };
+
+  const handleSliderCommit = () => {
+    if (sliderValue !== null) {
+      updateBookProgress(sliderValue, numPages);
+      // Small delay to prevent flickering before setSliderValue(null)
+      setTimeout(() => setSliderValue(null), 100);
+    }
+  };
+
   return (
     <div
       className={`zen-reader h-screen w-screen flex flex-col overflow-hidden theme-${readerTheme} ${getFontClass()}`}
@@ -454,7 +460,7 @@ const BookViewer = () => {
 
       {/* TAP ZONES - Removed to prevent blocking text selection. Using event delegation instead. */}
 
-      <div className="flex-1 flex items-start justify-center overflow-auto py-4">
+      <div className="flex-1 flex items-center justify-center overflow-auto">
         <div className="relative shadow-xl transition-all duration-200 origin-top" style={{ width: 'fit-content', height: 'fit-content' }}>
 
           {/* BOOKMARK RIBBON */}
@@ -479,7 +485,15 @@ const BookViewer = () => {
                 loading={<div className="h-96 flex flex-col items-center justify-center text-gray-500"><Loader2 className="animate-spin mb-2" size={40} /><p className="font-bold text-sm">Loading Book...</p></div>}
                 error={<div className="h-96 flex items-center justify-center text-red-500 p-8 text-center font-bold">Failed to load PDF.</div>}
               >
-                <Page pageNumber={currentPage} scale={scale} renderTextLayer={!isDrawMode} renderAnnotationLayer={false} width={pdfWidth} />
+                <Page
+                  key={currentPage}
+                  className="animate-page-flip"
+                  pageNumber={currentPage}
+                  scale={scale}
+                  renderTextLayer={!isDrawMode}
+                  renderAnnotationLayer={false}
+                  width={pdfWidth}
+                />
 
                 {/* AGGRESSIVE PRELOADING (Keep existing) */}
                 {currentPage < numPages && (
@@ -536,11 +550,12 @@ const BookViewer = () => {
                   type="range"
                   min="1"
                   max={numPages}
-                  value={currentPage}
+                  value={sliderValue !== null ? sliderValue : currentPage}
+                  onInput={handleSliderChange}
                   onChange={handleSliderChange}
                   onMouseUp={handleSliderCommit}
                   onTouchEnd={handleSliderCommit}
-                  className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
                 <span className="text-xs font-mono text-gray-400">{numPages}</span>
               </div>
@@ -548,7 +563,7 @@ const BookViewer = () => {
 
             <div className="flex justify-between items-center">
               <button onClick={() => updateBookProgress(currentPage - 1, numPages)} disabled={currentPage <= 1} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><ChevronLeft size={20} /> <span className="hidden md:inline font-bold">Prev</span></button>
-              <span className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-4 py-1 rounded-full">{currentPage} / {numPages || '--'}</span>
+              <span className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-4 py-1 rounded-full">{sliderValue !== null ? sliderValue : currentPage} / {numPages || '--'}</span>
               <button onClick={() => updateBookProgress(currentPage + 1, numPages)} disabled={currentPage >= numPages} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><span className="hidden md:inline font-bold">Next</span> <ChevronRight size={20} /></button>
             </div>
 
@@ -717,6 +732,7 @@ const BookViewer = () => {
             currentPage={currentPage}
             numPages={numPages}
             onBack={() => setScreen('DASHBOARD')}
+            onNavigateToPage={(page) => updateBookProgress(page, numPages)}
           />
         )
       }
