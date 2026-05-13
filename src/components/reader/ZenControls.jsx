@@ -3,7 +3,7 @@ import { ArrowLeft, Type, Palette, Bookmark, Settings, Sun, Moon, BookOpen, X, M
 import useSettingsStore from '../../store/useSettingsStore';
 import useAppStore from '../../store/useAppStore';
 
-const ZenControls = ({ visible, onClose, currentPage, numPages, onBack, onNavigateToPage }) => {
+const ZenControls = ({ visible, onClose, currentPage, numPages, onBack, onNavigateToPage, scale, setScale }) => {
     const [activePanel, setActivePanel] = useState(null); // 'typography' | 'theme' | 'study' | 'chapters' | null
     const [autoHideTimer, setAutoHideTimer] = useState(null);
 
@@ -207,7 +207,7 @@ const ZenControls = ({ visible, onClose, currentPage, numPages, onBack, onNaviga
                         </div>
 
                         {/* Line Height */}
-                        <div className="mb-2">
+                        <div className="mb-5">
                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Line Spacing</label>
                             <div className="flex items-center gap-4">
                                 <span className="text-xs text-gray-400">Compact</span>
@@ -221,6 +221,30 @@ const ZenControls = ({ visible, onClose, currentPage, numPages, onBack, onNaviga
                                     className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                                 />
                                 <span className="text-xs text-gray-400">Relaxed</span>
+                            </div>
+                        </div>
+
+                        {/* Zoom Controls (Newly Added) */}
+                        <div className="mb-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Zoom / Magnification</label>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setScale(Math.max(0.6, scale - 0.2))}
+                                    className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition text-gray-700 dark:text-gray-200"
+                                    title="Zoom Out"
+                                >
+                                    <Minus size={18} />
+                                </button>
+                                <div className="flex-1 text-center bg-gray-50 dark:bg-gray-900/50 py-2 rounded-xl border border-gray-100 dark:border-gray-700">
+                                    <span className="font-mono font-bold text-lg text-indigo-600 dark:text-indigo-400">{Math.round(scale * 100)}%</span>
+                                </div>
+                                <button
+                                    onClick={() => setScale(Math.min(2.5, scale + 0.2))}
+                                    className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition text-gray-700 dark:text-gray-200"
+                                    title="Zoom In"
+                                >
+                                    <Plus size={18} />
+                                </button>
                             </div>
                         </div>
                     </div>

@@ -97,6 +97,10 @@
     -moz-osx-font-smoothing: grayscale;
 }
 
+.pdf-dark-mode {
+    filter: invert(0.88) hue-rotate(180deg);
+}
+
 /* Margin Variants */
 .margin-narrow .react-pdf__Page {
     padding: 0 8px;
@@ -288,22 +292,23 @@
 
 @keyframes pageFlipIn {
     0% {
-        opacity: 0.6;
-        transform: rotateY(-10deg) scale(0.98);
+        opacity: 0.8;
+        transform: rotateY(-15deg) scale(0.98) translateX(-10px);
         transform-origin: center left;
     }
 
     100% {
         opacity: 1;
-        transform: rotateY(0deg) scale(1);
+        transform: rotateY(0deg) scale(1) translateX(0);
         transform-origin: center left;
     }
 }
 
 .animate-page-flip {
-    animation: pageFlipIn 0.4s ease-out;
+    animation: pageFlipIn 0.35s cubic-bezier(0.25, 1, 0.5, 1) forwards;
     backface-visibility: hidden;
-    perspective: 1000px;
+    perspective: 1500px;
+    will-change: transform, opacity;
 }
 
 /* ================================
@@ -333,4 +338,36 @@
 
 #epub-viewer iframe {
     border: none !important;
+}
+
+/* ================================
+   3D FLIPBOOK ENHANCEMENTS
+   ================================ */
+
+.flipbook-container {
+    background-color: transparent !important;
+    perspective: 2000px;
+}
+
+.flipbook-container .page {
+    background-color: white !important;
+    border-radius: 4px;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.05), 0 5px 15px rgba(0,0,0,0.1);
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+/* Dark Mode support for flipbook */
+.dark .flipbook-container .page {
+    background-color: #1C1C1E !important;
+    border-color: #333;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.2), 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.stPageFlip {
+    background-color: transparent !important;
+}
+
+/* Smooth out the transition between pages */
+.page-turning {
+    z-index: 100 !important;
 }

@@ -8,6 +8,9 @@ import { useSmartTrigger } from '../../hooks/useSmartTrigger';
 import CheckpointPrompt from '../overlays/CheckpointPrompt';
 import ActivityOverlay from '../overlays/ActivityOverlay';
 import LoadingOverlay from '../overlays/LoadingOverlay';
+import ReaderHeader from './ReaderHeader';
+import ReaderFooter from './ReaderFooter';
+import DictionaryModal from './DictionaryModal';
 
 // Services
 import { extractTextFromRange, getPageAsImage } from '../../services/pdfHelper';
@@ -26,6 +29,40 @@ import 'react-pdf/dist/Page/TextLayer.css';
 // Zen Reader
 import ZenControls from './ZenControls';
 import '../../styles/ReaderThemes.css';
+import HTMLFlipBook from 'react-pageflip';
+
+// Static loader reference to prevent react-pdf from re-rendering due to prop changes
+const PAGE_LOADER = (
+  <div className="flex items-center justify-center h-[500px]">
+    <Loader2 className="animate-spin text-gray-400" />
+  </div>
+);
+
+// Virtualized Page for FlipBook (lazy loads heavy react-pdf canvases)
+const FlipPage = React.forwardRef(({ pageNum, scale, isDrawMode, pdfWidth, currentPage }, ref) => {
+  // Preload Strategy: Keep 2 pages behind, and 4 pages ahead in memory
+  const shouldRender = pageNum >= currentPage - 2 && pageNum <= currentPage + 4;
+
+  return (
+    <div ref={ref} className="page bg-white flex justify-center border-r border-gray-100 shadow-sm" style={{ overflow: 'hidden' }}>
+      {shouldRender ? (
+        <Page
+          pageNumber={pageNum}
+          scale={scale}
+          renderTextLayer={!isDrawMode}
+          renderAnnotationLayer={false}
+          width={pdfWidth}
+          loading={PAGE_LOADER}
+        />
+      ) : (
+        <div style={{ width: pdfWidth * scale, height: pdfWidth * 1.414 }} className="flex items-center justify-center bg-gray-50 text-gray-300">
+           <Loader2 className="animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+});
+FlipPage.displayName = 'FlipPage';
 
 const BookViewer = () => {
   const { activeBook, updateBookProgress, updateBookStructure, setScreen, toggleActivity, addHighlight, highlights, deleteHighlight, isActivityOpen } = useAppStore();
@@ -49,6 +86,7 @@ const BookViewer = () => {
   const canvasRef = useRef(null);
   const pageContainerRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const flipBookRef = useRef(null);
 
   // Dictionary State
   const [dictionaryData, setDictionaryData] = useState(null);
@@ -58,14 +96,24 @@ const BookViewer = () => {
     const word = selection.text.trim();
     try {
       const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+      if (!res.ok) {
+        setDictionaryData({ word, meanings: [] });
+        setSelection(null);
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
       const data = await res.json();
-      if (Array.isArray(data)) setDictionaryData(data[0]);
-      else setDictionaryData({ word, meanings: [] });
+      if (Array.isArray(data) && data.length > 0) {
+        setDictionaryData(data[0]);
+      } else {
+        setDictionaryData({ word, meanings: [] });
+      }
     } catch (e) {
+      console.error("Dictionary API Error:", e);
       setDictionaryData({ word, meanings: [] });
     }
     setSelection(null);
-    window.getSelection().removeAllRanges();
+    window.getSelection()?.removeAllRanges();
   };
 
   // Settings
@@ -100,16 +148,14 @@ const BookViewer = () => {
   useEffect(() => {
     if (!activeBook) { setScreen('DASHBOARD'); return; }
 
+    let url = null; // Declare outside so cleanup can access it
+
     const initBook = async () => {
-      let url = null;
       let blob = activeBook.fileData;
 
       // Blob Logic
       if (activeBook.type === 'CLOUD') {
         setPdfUrl(activeBook.url);
-        // Fetch blob for analysis if needed (though we try to avoid big fetches if not needed)
-        // For structure analysis, we need the blob. 
-        // If we don't have it, we might skip or fetch.
       } else if (activeBook.fileData) {
         if (activeBook.fileData instanceof Blob) {
           url = URL.createObjectURL(activeBook.fileData);
@@ -118,25 +164,19 @@ const BookViewer = () => {
       }
 
       // --- SMART NAVIGATION LOGIC ---
-      // If we have a blob and NO structure yet, analyze it.
       if (blob && !activeBook.structure && activeBook.progress <= 1) {
         console.log("🔍 Analyzing Book Structure...");
-        // 1. Check Outline
         let structure = await getPdfOutline(blob);
 
-        // 2. Fallback to AI Index Analysis (Text only)
         if (!structure) {
           structure = await analyzeTextStructure(blob);
         }
 
         if (structure && structure.startPage) {
           console.log("📍 Smart Start: Jumping to page", structure.startPage);
-          // Save 'structure' to Store so chapters panel can display it
           updateBookStructure(structure);
-          // Jump to Start Page
           updateBookProgress(structure.startPage, numPages);
         } else if (structure && structure.chapters) {
-          // Even if no startPage, save chapters for TOC
           updateBookStructure(structure);
         }
       }
@@ -145,11 +185,25 @@ const BookViewer = () => {
     initBook();
 
     return () => {
-      // Cleanup URL
+      // Cleanup URL to prevent Memory Leaks
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
     };
-  }, [activeBook]);
+  }, [activeBook?.id, activeBook?.type, activeBook?.fileData, activeBook?.url]); // Trigger only when file data or book identity changes, not progress.
 
   const currentPage = activeBook?.progress || 1;
+
+  // --- SYNC EXTERNAL NAVIGATION WITH FLIPBOOK ---
+  useEffect(() => {
+    if (flipBookRef.current && flipBookRef.current.pageFlip()) {
+      const flipbook = flipBookRef.current.pageFlip();
+      const targetPage = currentPage - 1; // HTMLFlipBook is 0-indexed
+      if (flipbook.getCurrentPageIndex() !== targetPage) {
+        flipbook.turnToPage(targetPage);
+      }
+    }
+  }, [currentPage]);
 
   // --- RESET ON PAGE TURN ---
   useEffect(() => {
@@ -359,7 +413,24 @@ const BookViewer = () => {
 
   if (!activeBook) return <div>Loading...</div>;
   const pageHighlights = highlights.filter(h => h.bookId === activeBook.id && h.page === currentPage);
-  const pdfWidth = window.innerWidth > 800 ? 600 : window.innerWidth - 32;
+  // --- RESPONSIVE PDF WIDTH ---
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    let timeoutId = null;
+    const handleResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setWindowWidth(window.innerWidth);
+      }, 150); // Debounce resize to prevent rapid re-renders
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  const pdfWidth = windowWidth > 800 ? 600 : windowWidth - 32;
 
   // Get theme background color for container
   const getThemeBg = () => {
@@ -435,28 +506,17 @@ const BookViewer = () => {
       onClick={handleZenClick}
     >
 
-      {/* HEADER - Only shown when NOT in Zen mode */}
-      {!zenMode && (
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-2 md:px-3 py-2 flex justify-between items-center z-20 shrink-0 shadow-sm h-12 md:h-14">
-          <button onClick={() => setScreen('DASHBOARD')} className="p-1.5 md:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-700 dark:text-gray-200 transition-colors"><ArrowLeft size={20} /></button>
-          <div className="font-bold text-gray-800 dark:text-gray-100 truncate text-sm max-w-[100px] xs:max-w-[140px] md:max-w-md flex-1 mx-2">{activeBook.title}</div>
-          <div className="flex items-center gap-0.5 md:gap-1">
-            <button onClick={() => setScale(s => Math.max(s - 0.2, 0.6))} className="p-1.5 md:p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"><ZoomOut size={18} /></button>
-            <span className="text-xs font-mono w-8 text-center hidden md:inline-block text-gray-600 dark:text-gray-300">{Math.round(scale * 100)}%</span>
-            <button onClick={() => setScale(s => Math.min(s + 0.2, 2.5))} className="p-1.5 md:p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"><ZoomIn size={18} /></button>
-            <div className="w-[1px] h-5 md:h-6 bg-gray-300 dark:bg-gray-600 mx-1"></div>
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={toggleReaderDarkMode}
-              className={`p-1.5 md:p-2 rounded-full transition ${readerDarkMode ? 'bg-indigo-500 text-white shadow-md' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              title={readerDarkMode ? 'Light Mode' : 'Dark Mode'}
-            >
-              {readerDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button onClick={() => setIsDrawMode(!isDrawMode)} className={`p-1.5 md:p-2 rounded-full transition ${isDrawMode ? 'bg-red-500 text-white shadow-md' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>{isDrawMode ? <X size={18} /> : <PenTool size={18} />}</button>
-          </div>
-        </div>
-      )}
+      <ReaderHeader
+        zenMode={zenMode}
+        activeBook={activeBook}
+        scale={scale}
+        setScale={setScale}
+        readerDarkMode={readerDarkMode}
+        toggleReaderDarkMode={toggleReaderDarkMode}
+        isDrawMode={isDrawMode}
+        setIsDrawMode={setIsDrawMode}
+        setScreen={setScreen}
+      />
 
 
 
@@ -472,11 +532,7 @@ const BookViewer = () => {
 
           <div
             ref={pageContainerRef}
-            className="relative min-h-[500px] transition-all duration-300 zen-page"
-            style={readerTheme === 'dark' || readerTheme === 'night' ? {
-              filter: 'invert(0.88) hue-rotate(180deg)',
-              background: readerTheme === 'dark' ? '#1C1C1E' : '#1A1612'
-            } : { background: readerTheme === 'sepia' ? '#F4ECD8' : 'white' }}
+            className={`relative min-h-[500px] transition-all duration-300 zen-page ${(readerTheme === 'dark' || readerTheme === 'night') ? 'pdf-dark-mode' : ''}`}
           >
 
             {pdfUrl ? (
@@ -487,23 +543,65 @@ const BookViewer = () => {
                 loading={<div className="h-96 flex flex-col items-center justify-center text-gray-500"><Loader2 className="animate-spin mb-2" size={40} /><p className="font-bold text-sm">Loading Book...</p></div>}
                 error={<div className="h-96 flex items-center justify-center text-red-500 p-8 text-center font-bold">Failed to load PDF.</div>}
               >
-                <Page
-                  key={currentPage}
-                  className="animate-page-flip"
-                  pageNumber={currentPage}
-                  scale={scale}
-                  renderTextLayer={!isDrawMode}
-                  renderAnnotationLayer={false}
-                  width={pdfWidth}
-                />
-
-                {/* AGGRESSIVE PRELOADING (Keep existing) */}
-                {currentPage < numPages && (
-                  <div style={{ display: 'none' }} aria-hidden="true">
-                    <Page pageNumber={currentPage + 1} scale={scale * 0.75} renderTextLayer={false} renderAnnotationLayer={false} width={pdfWidth * 0.75} />
+                {/* 3D INTERACTIVE FLIPBOOK RENDERING */}
+                <div 
+                  className="flex justify-center items-center w-full relative z-10 py-20 px-10 overflow-hidden" 
+                  style={{ 
+                    pointerEvents: isDrawMode ? 'none' : 'auto',
+                    minHeight: '100vh',
+                    perspective: '2000px'
+                  }}
+                >
+                  <div 
+                    className="transition-transform duration-300 ease-out flex items-center justify-center"
+                    style={{ 
+                      transform: `scale(${scale})`,
+                      transformOrigin: 'center center',
+                      willChange: 'transform',
+                      backfaceVisibility: 'hidden',
+                      WebkitBackfaceVisibility: 'hidden'
+                    }}
+                  >
+                    {numPages && (
+                      <HTMLFlipBook
+                        width={pdfWidth}
+                        height={pdfWidth * 1.414}
+                        size="fixed"
+                        minWidth={300}
+                        maxWidth={pdfWidth}
+                        minHeight={400}
+                        maxHeight={pdfWidth * 1.414}
+                        maxShadowOpacity={0.4}
+                        showCover={false}
+                        mobileScrollSupport={true}
+                        usePortrait={true}
+                        flippingTime={800}
+                        drawShadow={true}
+                        startPage={currentPage - 1}
+                        onFlip={(e) => {
+                          const newPage = e.data + 1;
+                          if (newPage !== currentPage) {
+                            updateBookProgress(newPage, numPages);
+                          }
+                        }}
+                        ref={flipBookRef}
+                        className="flipbook-container rounded-lg shadow-2xl"
+                      >
+                        {Array.from({ length: numPages }).map((_, i) => (
+                          <FlipPage
+                            key={`flip-page-${i + 1}`}
+                            pageNum={i + 1}
+                            scale={1.0} // Keep internal PDF scale at 1.0, we scale the container
+                            isDrawMode={isDrawMode}
+                            pdfWidth={pdfWidth}
+                            currentPage={currentPage}
+                          />
+                        ))}
+                      </HTMLFlipBook>
+                    )}
                   </div>
-                )}
-                {/* ... (keep other preloads) ... */}
+                </div>
+
               </Document>
             ) : (
               <div className="h-96 flex flex-col items-center justify-center text-gray-500"><Loader2 className="animate-spin mb-2" size={40} /><p className="font-bold text-sm">Preparing...</p></div>
@@ -575,107 +673,21 @@ const BookViewer = () => {
         </div>
       )}
 
-      {/* FOOTER CONTROLS & SLIDER - Only shown when NOT in Zen mode */}
-      {
-        !zenMode && (
-          <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-col gap-3 shrink-0 z-20">
-
-            {/* Page Scroller Slider */}
-            {numPages > 1 && (
-              <div className="flex items-center gap-3 px-2">
-                <span className="text-xs font-mono text-gray-400">1</span>
-                <input
-                  type="range"
-                  min="1"
-                  max={numPages}
-                  value={sliderValue !== null ? sliderValue : currentPage}
-                  onInput={handleSliderChange}
-                  onChange={handleSliderChange}
-                  onMouseUp={handleSliderCommit}
-                  onTouchEnd={handleSliderCommit}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <span className="text-xs font-mono text-gray-400">{numPages}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center">
-              <button onClick={() => updateBookProgress(currentPage - 1, numPages)} disabled={currentPage <= 1} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><ChevronLeft size={20} /> <span className="hidden md:inline font-bold">Prev</span></button>
-
-              {/* Clickable Page Number - Opens Go to Page */}
-              <button
-                onClick={() => {
-                  setGoToPageInput(String(currentPage));
-                  setShowGoToPage(true);
-                }}
-                className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-4 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-                title="Click to jump to page"
-              >
-                {sliderValue !== null ? sliderValue : currentPage} / {numPages || '--'}
-              </button>
-
-              <button onClick={() => updateBookProgress(currentPage + 1, numPages)} disabled={currentPage >= numPages} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><span className="hidden md:inline font-bold">Next</span> <ChevronRight size={20} /></button>
-            </div>
-
-            {/* Go to Page Modal */}
-            {showGoToPage && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowGoToPage(false)}>
-                <div
-                  className="bg-white dark:bg-gray-800 rounded-xl p-6 w-80 shadow-2xl"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Go to Page</h3>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      max={numPages || 1}
-                      value={goToPageInput}
-                      onChange={(e) => setGoToPageInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const page = parseInt(goToPageInput);
-                          if (page >= 1 && page <= numPages) {
-                            updateBookProgress(page, numPages);
-                            setShowGoToPage(false);
-                          }
-                        }
-                      }}
-                      className="flex-1 px-4 py-2 border rounded-lg text-center text-lg font-bold focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => {
-                        const page = parseInt(goToPageInput);
-                        if (page >= 1 && page <= numPages) {
-                          updateBookProgress(page, numPages);
-                          setShowGoToPage(false);
-                        }
-                      }}
-                      className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition"
-                    >
-                      Go
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-                    Enter a page number (1-{numPages})
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Manual Chapter Finish Button */}
-            {manualChapterMode && (
-              <button
-                onClick={() => handleStartActivity('CHAPTER_END')}
-                className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition flex justify-center items-center gap-2"
-              >
-                <CheckCircle2 size={18} /> Finish Chapter & Quiz
-              </button>
-            )}
-          </div>
-        )
-      }
+      <ReaderFooter
+        zenMode={zenMode}
+        numPages={numPages}
+        currentPage={currentPage}
+        sliderValue={sliderValue}
+        handleSliderChange={handleSliderChange}
+        handleSliderCommit={handleSliderCommit}
+        updateBookProgress={updateBookProgress}
+        showGoToPage={showGoToPage}
+        setShowGoToPage={setShowGoToPage}
+        goToPageInput={goToPageInput}
+        setGoToPageInput={setGoToPageInput}
+        manualChapterMode={manualChapterMode}
+        handleStartActivity={handleStartActivity}
+      />
 
       {isGenerating && generationMode === 'FOREGROUND' && <LoadingOverlay />}
 
@@ -785,40 +797,10 @@ const BookViewer = () => {
       }
 
       {/* DICTIONARY MODAL */}
-      {
-        dictionaryData && (
-          <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center p-4 md:p-0" onClick={() => setDictionaryData(null)}>
-            <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h2 className="text-2xl font-black text-gray-800 capitalize">{dictionaryData.word}</h2>
-                  {dictionaryData.phonetic && <p className="text-gray-400 font-mono">{dictionaryData.phonetic}</p>}
-                </div>
-                <button onClick={() => setDictionaryData(null)} className="p-2 bg-gray-100 rounded-full"><X size={20} /></button>
-              </div>
-
-              <div className="max-h-[60vh] overflow-y-auto space-y-4">
-                {dictionaryData.meanings?.map((m, i) => (
-                  <div key={i}>
-                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">{m.partOfSpeech}</p>
-                    <ul className="list-disc pl-5 space-y-2">
-                      {m.definitions.slice(0, 3).map((d, j) => (
-                        <li key={j} className="text-sm text-gray-700 leading-relaxed">
-                          {d.definition}
-                          {d.example && <p className="text-xs text-gray-400 italic mt-1">"{d.example}"</p>}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-                {(!dictionaryData.meanings || dictionaryData.meanings.length === 0) && (
-                  <p className="text-gray-500">No definitions found.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )
-      }
+      <DictionaryModal 
+        dictionaryData={dictionaryData} 
+        onClose={() => setDictionaryData(null)} 
+      />
 
       {/* ZEN CONTROLS OVERLAY */}
       {
@@ -830,6 +812,8 @@ const BookViewer = () => {
             numPages={numPages}
             onBack={() => setScreen('DASHBOARD')}
             onNavigateToPage={(page) => updateBookProgress(page, numPages)}
+            scale={scale}
+            setScale={setScale}
           />
         )
       }

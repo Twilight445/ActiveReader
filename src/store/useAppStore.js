@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { set as setDb, get as getDb, del as delDb } from 'idb-keyval';
+import { localDb } from '../services/db';
 import { db } from '../firebase';
 import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import useSettingsStore from './useSettingsStore';
@@ -109,7 +109,7 @@ const useAppStore = create(
         const isEpub = file.name.toLowerCase().endsWith('.epub');
         const format = isEpub ? 'EPUB' : 'PDF';
         try {
-          await setDb(`${format.toLowerCase()}_${bookId}`, file);
+          await localDb.saveBookFile(format, bookId, file);
           const newBook = {
             id: bookId,
             title: file.name,
@@ -139,7 +139,7 @@ const useAppStore = create(
         try {
           // 1. Save File Locally (since we can't use Cloud Storage)
           const bookId = Date.now().toString();
-          await setDb(`pdf_${bookId}`, file);
+          await localDb.saveBookFile('pdf', bookId, file);
 
           // 2. Create Book Object
           const newBook = {
@@ -237,21 +237,16 @@ const useAppStore = create(
               }
             });
 
-            // Merge & Dedupe function (Simple ID check)
-            const mergedHighlights = [...state.highlights, ...incomingHighlights].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
-            const mergedSummaries = [...state.userSummaries, ...incomingSummaries].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
-            const mergedFavorites = [...state.favorites, ...incomingFavorites].filter((v, i, a) => a.findIndex(t => ((t.id || t.question) === (v.id || v.question))) === i);
+            // Merge & Dedupe function using Maps for O(N) performance
+            const dedupeById = (arr) => Array.from(new Map(arr.map(item => [item.id, item])).values());
+            const dedupeFavorites = (arr) => Array.from(new Map(arr.map(item => [item.id || item.question, item])).values());
+
+            const mergedHighlights = dedupeById([...state.highlights, ...incomingHighlights]);
+            const mergedSummaries = dedupeById([...state.userSummaries, ...incomingSummaries]);
+            const mergedFavorites = dedupeFavorites([...state.favorites, ...incomingFavorites]);
 
             // Final Book Deduplication
-            const uniqueLib = [];
-            const seenIds = new Set();
-            for (const b of newLib) {
-              const sid = b.id.toString();
-              if (!seenIds.has(sid)) {
-                uniqueLib.push(b);
-                seenIds.add(sid);
-              }
-            }
+            const uniqueLib = dedupeById(newLib);
 
             return {
               library: uniqueLib,
@@ -259,6 +254,33 @@ const useAppStore = create(
               userSummaries: mergedSummaries,
               favorites: mergedFavorites
               // gallery remains local-only to prevent size issues
+            };
+          });
+        });
+
+        // Listener for Book Data Subcollections (to bypass 1MB limit)
+        const unsubData = onSnapshot(collection(db, "sync_users", syncId, "book_data"), (snapshot) => {
+          if (snapshot.empty) return;
+
+          set(state => {
+            let incomingHighlights = [];
+            let incomingSummaries = [];
+            let incomingFavorites = [];
+
+            snapshot.forEach(docSnap => {
+              const data = docSnap.data();
+              if (data.type === 'highlights' && data.items) incomingHighlights.push(...data.items);
+              if (data.type === 'summaries' && data.items) incomingSummaries.push(...data.items);
+              if (data.type === 'questions' && data.items) incomingFavorites.push(...data.items);
+            });
+
+            const dedupeById = (arr) => Array.from(new Map(arr.map(item => [item.id, item])).values());
+            const dedupeFavorites = (arr) => Array.from(new Map(arr.map(item => [item.id || item.question, item])).values());
+
+            return {
+              highlights: dedupeById([...state.highlights, ...incomingHighlights]),
+              userSummaries: dedupeById([...state.userSummaries, ...incomingSummaries]),
+              favorites: dedupeFavorites([...state.favorites, ...incomingFavorites])
             };
           });
         });
@@ -277,6 +299,7 @@ const useAppStore = create(
         return () => {
           console.log("Cleaning up Sync Listeners");
           unsubBooks();
+          unsubData();
           unsubStats();
         };
       },
@@ -303,24 +326,36 @@ const useAppStore = create(
 
             const { fileData, ...cleanBook } = bookMeta;
 
-            // Prepare data for sync (excluding gallery to prevent size limit)
+            // Prepare data for sync (excluding arrays to prevent 1MB limit)
             const bookData = {
               ...cleanBook,
-              lastRead: new Date().toISOString(),
-              highlights: state.highlights.filter(h => h.bookId?.toString() === bookId),
-              summaries: state.userSummaries.filter(s => s.bookId?.toString() === bookId),
-              questions: state.favorites.filter(f => f.bookId?.toString() === bookId)
-              // Gallery excluded - images cause document size to exceed 1MB limit
+              lastRead: new Date().toISOString()
             };
-
-            // Calculate estimated size to warn user
-            const estimatedSize = JSON.stringify(bookData).length;
-            if (estimatedSize > 900000) { // 900KB warning threshold
-              console.warn(`⚠️ Book data approaching size limit: ${(estimatedSize / 1024).toFixed(0)}KB`);
-            }
+            
+            // Delete old array fields from the book document to clear up space
+            bookData.highlights = null;
+            bookData.summaries = null;
+            bookData.questions = null;
 
             await setDoc(doc(db, "sync_users", syncId, "books", bookId), bookData, { merge: true });
-            console.log(`✅ Cloud Sync Success for Book: ${bookId} (${(estimatedSize / 1024).toFixed(0)}KB)`);
+
+            // Save arrays in separate documents
+            const highlights = state.highlights.filter(h => h.bookId?.toString() === bookId);
+            if (highlights.length > 0) {
+              await setDoc(doc(db, "sync_users", syncId, "book_data", `${bookId}_highlights`), { type: 'highlights', bookId, items: highlights }, { merge: true });
+            }
+
+            const summaries = state.userSummaries.filter(s => s.bookId?.toString() === bookId);
+            if (summaries.length > 0) {
+              await setDoc(doc(db, "sync_users", syncId, "book_data", `${bookId}_summaries`), { type: 'summaries', bookId, items: summaries }, { merge: true });
+            }
+
+            const questions = state.favorites.filter(f => f.bookId?.toString() === bookId);
+            if (questions.length > 0) {
+              await setDoc(doc(db, "sync_users", syncId, "book_data", `${bookId}_questions`), { type: 'questions', bookId, items: questions }, { merge: true });
+            }
+
+            console.log(`✅ Cloud Sync Success for Book: ${bookId} (Chunked Data)`);
           }
         } catch (e) {
           // Enhanced error handling for size limit
@@ -344,7 +379,7 @@ const useAppStore = create(
             set({ activeBook: book });
           } else {
             const storagePrefix = book.format === 'EPUB' ? 'epub' : 'pdf';
-            const fileBlob = await getDb(`${storagePrefix}_${bookId}`);
+            const fileBlob = await localDb.getBookFile(storagePrefix, bookId);
             if (fileBlob) set({ activeBook: { ...book, fileData: fileBlob } });
             else {
               // Local file missing strategy: Don't boot to dashboard.
@@ -361,7 +396,7 @@ const useAppStore = create(
         if (!bookId) return;
 
         try {
-          await setDb(`pdf_${bookId}`, file);
+          await localDb.saveBookFile('pdf', bookId, file);
           set({ activeBook: { ...state.activeBook, fileData: file, isMissingFile: false } });
         } catch (e) {
           alert("Recovery failed: " + e.message);
@@ -373,7 +408,7 @@ const useAppStore = create(
         const book = state.library.find(b => b.id === bookId);
 
         // 1. Delete Local File
-        if (book && book.type === 'LOCAL') await delDb(`pdf_${bookId}`);
+        if (book && book.type === 'LOCAL') await localDb.deleteBookFile('pdf', bookId);
 
         // 2. Delete from Cloud (Firestore)
         const syncId = useSettingsStore.getState().syncId;
