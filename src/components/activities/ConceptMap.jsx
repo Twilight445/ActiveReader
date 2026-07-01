@@ -43,10 +43,12 @@ const ConceptMap = ({ data, onNext }) => {
             const svgEl = element.querySelector('svg');
             if (svgEl) {
               svgEl.style.height = 'auto';
-              svgEl.style.maxWidth = 'none'; // Allow it to be HUGE
+              svgEl.style.maxWidth = 'none';
               svgEl.style.width = '100%';
             }
           }
+        }).catch(() => {
+          if (element) element.innerHTML = "<p class='text-red-400 p-4'>Error rendering diagram.</p>";
         });
       } catch (err) {
         if (element) element.innerHTML = "<p class='text-red-400 p-4'>Error rendering diagram.</p>";

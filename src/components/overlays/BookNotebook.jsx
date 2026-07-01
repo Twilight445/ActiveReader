@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { X, FileText, Highlighter, BrainCircuit, Trash2, ChevronRight, BookOpen, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, FileText, Highlighter, BrainCircuit, Trash2, ChevronRight, BookOpen, Image as ImageIcon, Loader2, Play, HelpCircle, Network, Brain, Sparkles } from 'lucide-react';
 import useAppStore from '../../store/useAppStore';
-import QuizCard from '../activities/QuizCard';
-import ConceptMap from '../activities/ConceptMap';
-import NanoFlashcard from '../activities/NanoFlashcard';
+import ActivityModal from './ActivityModal';
 
 const BookNotebook = ({ book, onClose }) => {
     const { highlights, userSummaries, favorites, gallery, deleteHighlight, deleteUserSummary, toggleFavorite, deleteFromGallery } = useAppStore();
     const [activeTab, setActiveTab] = useState('summary');
+    const [activeReplay, setActiveReplay] = useState(null);
 
     // filter data for this book
     // Ensure we compare strings to avoid type mismatches
@@ -93,24 +92,95 @@ const BookNotebook = ({ book, onClose }) => {
 
                     {/* ACTIVITIES TAB */}
                     {activeTab === 'activities' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {bookActivities.length === 0 ? <div className="col-span-full"><EmptyState msg="No saved quizzes or maps. Click 'Favorite' on generated content." /></div> :
-                                bookActivities.map(item => (
-                                    <div key={item.id || item.question} className="relative group">
-                                        <div className="scale-[0.85] origin-top-left pointer-events-none">
-                                            {item.type === 'concept_map' ? <ConceptMap data={item} /> :
-                                                item.type === 'visual' ? <NanoFlashcard data={item} /> :
-                                                    <QuizCard data={item} />
-                                            }
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            {bookActivities.length === 0 ? (
+                                <div className="col-span-full">
+                                    <EmptyState msg="No saved quizzes or maps. Click 'Favorite' on generated content." />
+                                </div>
+                            ) : (
+                                bookActivities.map((item, idx) => {
+                                    const isQuiz = item.type !== 'concept_map' && item.type !== 'visual';
+                                    const isConceptMap = item.type === 'concept_map';
+                                    const isVisual = item.type === 'visual';
+
+                                    return (
+                                        <div 
+                                            key={item.id || item.question || `act-${idx}`} 
+                                            className={`relative bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between overflow-hidden group
+                                                ${isQuiz ? 'border-l-4 border-l-indigo-500 border-slate-200' : ''}
+                                                ${isConceptMap ? 'border-l-4 border-l-teal-500 border-slate-200' : ''}
+                                                ${isVisual ? 'border-l-4 border-l-emerald-500 border-slate-200' : ''}
+                                            `}
+                                        >
+                                            <div>
+                                                {/* Header Badges */}
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    {isQuiz && (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
+                                                            <HelpCircle size={12} /> Interactive Quiz
+                                                        </span>
+                                                    )}
+                                                    {isConceptMap && (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
+                                                            <Network size={12} /> Concept Flow Map
+                                                        </span>
+                                                    )}
+                                                    {isVisual && (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                                                            <Brain size={12} /> Visual Memory Card
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Main Title/Question Description */}
+                                                <h3 className="text-gray-800 font-bold text-base leading-snug line-clamp-3 mb-4">
+                                                    {isQuiz && item.question}
+                                                    {isConceptMap && (item.title || "Concept Connections Map")}
+                                                    {isVisual && (item.question || "Visual Mnemonic Card")}
+                                                </h3>
+
+                                                {/* Context info */}
+                                                {isQuiz && item.options && (
+                                                    <p className="text-xs text-slate-400 font-semibold mb-6">
+                                                        {item.options.length} multiple choice options available
+                                                    </p>
+                                                )}
+                                                {isConceptMap && (
+                                                    <p className="text-xs text-slate-400 font-semibold mb-6">
+                                                        Interactive visual network mapping
+                                                    </p>
+                                                )}
+                                                {isVisual && item.image_prompt && (
+                                                    <p className="text-xs text-slate-400 italic line-clamp-1 mb-6">
+                                                        Prompt: "{item.image_prompt}"
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="flex items-center gap-2 pt-3 border-t border-slate-100 shrink-0">
+                                                <button
+                                                    onClick={() => setActiveReplay(item)}
+                                                    className={`flex-1 py-2 rounded-xl font-bold text-xs text-white shadow-sm flex items-center justify-center gap-1.5 transition active:scale-95
+                                                        ${isQuiz ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/10' : ''}
+                                                        ${isConceptMap ? 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/10' : ''}
+                                                        ${isVisual ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/10' : ''}
+                                                    `}
+                                                >
+                                                    <Play size={14} fill="currentColor" /> Play Activity
+                                                </button>
+                                                <button
+                                                    onClick={() => toggleFavorite(item)}
+                                                    className="p-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 rounded-xl text-slate-400 transition"
+                                                    title="Remove from Favorites"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="absolute top-2 right-2 flex gap-2">
-                                            <button onClick={() => toggleFavorite(item)} className="bg-white p-2 rounded-full shadow text-red-500 hover:bg-red-50">
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            }
+                                    );
+                                })
+                            )}
                         </div>
                     )}
 
@@ -140,6 +210,15 @@ const BookNotebook = ({ book, onClose }) => {
 
                 </div>
             </div>
+
+            {/* Play/Replay Modal overlay */}
+            {activeReplay && (
+                <ActivityModal
+                    activity={activeReplay}
+                    bookId={book.id}
+                    onClose={() => setActiveReplay(null)}
+                />
+            )}
         </div>
     );
 };

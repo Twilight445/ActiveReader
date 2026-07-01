@@ -1,65 +1,93 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 const ReaderFooter = ({
   zenMode,
   numPages,
   currentPage,
-  sliderValue,
-  handleSliderChange,
-  handleSliderCommit,
-  updateBookProgress,
+  showScrubber,
+  scrubberValue,
+  handleScrubberChange,
+  handleScrubberCommit,
   showGoToPage,
   setShowGoToPage,
   goToPageInput,
   setGoToPageInput,
+  updateBookProgress,
   manualChapterMode,
-  handleStartActivity
+  handleStartActivity,
+  onScrubberInteract,
 }) => {
   if (zenMode) return null;
 
+  const displayPage = scrubberValue !== null ? scrubberValue : currentPage;
+  const progress = numPages ? ((currentPage - 1) / (numPages - 1)) * 100 : 0;
+
   return (
-    <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-col gap-3 shrink-0 z-20">
+    <>
+      {/* Thin progress bar — always visible at very bottom */}
+      <div className="h-0.5 bg-gray-200 dark:bg-gray-700 shrink-0 relative z-30">
+        <div
+          className="h-full bg-indigo-500 transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
 
-      {/* Page Scroller Slider */}
-      {numPages > 1 && (
-        <div className="flex items-center gap-3 px-2">
-          <span className="text-xs font-mono text-gray-400">1</span>
-          <input
-            type="range"
-            min="1"
-            max={numPages}
-            value={sliderValue !== null ? sliderValue : currentPage}
-            onInput={handleSliderChange}
-            onChange={handleSliderChange}
-            onMouseUp={handleSliderCommit}
-            onTouchEnd={handleSliderCommit}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-          />
-          <span className="text-xs font-mono text-gray-400">{numPages}</span>
+      {/* Auto-hidden Scrubber Panel */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-40 transition-all duration-300 ease-out ${
+          showScrubber ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-t border-gray-200/60 dark:border-gray-700/60 px-4 py-3 shadow-2xl">
+
+          {/* Page scrubber slider */}
+          {numPages > 1 && (
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-xs font-mono text-gray-400 dark:text-gray-500 w-6 text-right">1</span>
+              <div className="flex-1 relative">
+                <input
+                  type="range"
+                  min="1"
+                  max={numPages}
+                  value={displayPage}
+                  onInput={handleScrubberChange}
+                  onChange={handleScrubberChange}
+                  onMouseUp={handleScrubberCommit}
+                  onTouchEnd={handleScrubberCommit}
+                  onMouseDown={onScrubberInteract}
+                  onTouchStart={onScrubberInteract}
+                  className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-indigo-600"
+                />
+              </div>
+              <span className="text-xs font-mono text-gray-400 dark:text-gray-500 w-8">{numPages}</span>
+            </div>
+          )}
+
+          {/* Page counter — tappable to open Go To Page */}
+          <div className="flex justify-center items-center gap-3">
+            <button
+              onClick={() => {
+                setGoToPageInput(String(currentPage));
+                setShowGoToPage(true);
+              }}
+              className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-800 dark:text-gray-300 px-5 py-1.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+              title="Tap to jump to page"
+            >
+              {displayPage} / {numPages || '--'}
+            </button>
+          </div>
+
+          {/* Manual Chapter Finish Button */}
+          {manualChapterMode && (
+            <button
+              onClick={() => handleStartActivity('CHAPTER_END')}
+              className="w-full mt-2 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition flex justify-center items-center gap-2"
+            >
+              <CheckCircle2 size={18} /> Finish Chapter & Quiz
+            </button>
+          )}
         </div>
-      )}
-
-      <div className="flex justify-between items-center">
-        <button onClick={() => updateBookProgress(currentPage - 1, numPages)} disabled={currentPage <= 1} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <ChevronLeft size={20} /> <span className="hidden md:inline font-bold">Prev</span>
-        </button>
-
-        {/* Clickable Page Number - Opens Go to Page */}
-        <button
-          onClick={() => {
-            setGoToPageInput(String(currentPage));
-            setShowGoToPage(true);
-          }}
-          className="font-mono text-sm font-bold bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-4 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-          title="Click to jump to page"
-        >
-          {sliderValue !== null ? sliderValue : currentPage} / {numPages || '--'}
-        </button>
-
-        <button onClick={() => updateBookProgress(currentPage + 1, numPages)} disabled={currentPage >= numPages} className="flex items-center gap-1 text-gray-700 dark:text-gray-200 disabled:opacity-30 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <span className="hidden md:inline font-bold">Next</span> <ChevronRight size={20} />
-        </button>
       </div>
 
       {/* Go to Page Modal */}
@@ -108,17 +136,7 @@ const ReaderFooter = ({
           </div>
         </div>
       )}
-
-      {/* Manual Chapter Finish Button */}
-      {manualChapterMode && (
-        <button
-          onClick={() => handleStartActivity('CHAPTER_END')}
-          className="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition flex justify-center items-center gap-2"
-        >
-          <CheckCircle2 size={18} /> Finish Chapter & Quiz
-        </button>
-      )}
-    </div>
+    </>
   );
 };
 

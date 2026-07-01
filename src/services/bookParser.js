@@ -1,5 +1,4 @@
-import { extractTextFromRange, isScannedPdf, getPageAsImage } from './pdfHelper';
-import { ocrTextFromImage } from './ocrService';
+import { extractTextFromRange, getPageAsImage } from './pdfHelper';
 import useSettingsStore from '../store/useSettingsStore';
 
 /**
@@ -13,7 +12,6 @@ import useSettingsStore from '../store/useSettingsStore';
  */
 export const parsePdf = async (fileBlob, startPage, endPage) => {
     try {
-        console.log(`📖 Parsing pages ${startPage}-${endPage}...`);
 
         let text = await extractTextFromRange(fileBlob, startPage, endPage);
 
@@ -23,7 +21,6 @@ export const parsePdf = async (fileBlob, startPage, endPage) => {
 
         // --- SCENARIO A: SCANNED PDF (VISION MODE) ---
         if (!text || text.trim().length < charThreshold) {
-            console.warn("⚠️ Text extraction yielded low content. Likely scanned PDF. Switching to VISION Mode...");
 
             // Use scannedContextLimit from settings
             const { scannedContextLimit } = useSettingsStore.getState();
@@ -34,26 +31,22 @@ export const parsePdf = async (fileBlob, startPage, endPage) => {
             const visionEnd = endPage;
             const visionStart = Math.max(startPage, endPage - contextLimit + 1);
 
-            console.log(`📸 Capturing ${contextLimit} pages (${visionStart} to ${visionEnd}) as images...`);
-
             for (let i = visionStart; i <= visionEnd; i++) {
                 try {
                     const base64Image = await getPageAsImage(fileBlob, i);
                     if (base64Image) {
                         images.push(base64Image);
-                        console.log(`✅ Captured page ${i}`);
                     }
                 } catch (imgError) {
-                    console.warn(`⚠️ Failed to capture page ${i}:`, imgError.message);
+                    console.warn(`Failed to capture page ${i}:`, imgError.message);
                 }
             }
 
             if (images.length === 0) {
-                console.error("❌ No images could be captured for vision mode");
+                console.error('No images could be captured for vision mode');
                 return { mode: 'ERROR', data: null };
             }
 
-            console.log(`✅ Captured ${images.length} images for vision mode`);
             return { mode: 'VISION', data: images };
         }
 
@@ -61,7 +54,7 @@ export const parsePdf = async (fileBlob, startPage, endPage) => {
         return { mode: 'TEXT', data: text };
 
     } catch (error) {
-        console.error("❌ PDF Parsing failed:", error);
+        console.error('PDF Parsing failed:', error);
         return { mode: 'ERROR', data: null };
     }
 };

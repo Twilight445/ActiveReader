@@ -1,11 +1,7 @@
-import { pdfjs } from 'react-pdf';
-import { extractTextFromRange } from './pdfHelper';
+import { extractTextFromRange, getOrLoadPdf } from './pdfHelper';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import useSettingsStore from '../store/useSettingsStore';
 import { generateWithPawan } from './pawanService';
-
-// Ensure worker
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 /**
  * Checks for Built-in PDF Outline (Bookmarks).
@@ -13,13 +9,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.m
  */
 export const getPdfOutline = async (fileBlob) => {
     try {
-        const arrayBuffer = await fileBlob.arrayBuffer();
-        const pdf = await pdfjs.getDocument(arrayBuffer).promise;
+        const pdf = await getOrLoadPdf(fileBlob);
         const outline = await pdf.getOutline();
 
         if (!outline || outline.length === 0) return null;
-
-        console.log("📑 Found Built-in PDF Outline:", outline);
 
         // Map outline to a flat chapter list
         // Note: Outline items usually have `dest`. parsing dest to page number is complex in pdf.js
@@ -54,7 +47,7 @@ export const getPdfOutline = async (fileBlob) => {
         return null;
 
     } catch (error) {
-        console.error("❌ PDF Outline Check Failed:", error);
+        console.error('PDF Outline Check Failed:', error);
         return null;
     }
 };
@@ -68,7 +61,6 @@ export const analyzeTextStructure = async (fileBlob) => {
     const builtIn = await getPdfOutline(fileBlob);
     if (builtIn) return builtIn;
 
-    console.log("🔍 No outline found. Analyzing Text Structure with AI...");
 
     // 2. Extract first 10 pages
     const text = await extractTextFromRange(fileBlob, 1, 10);
@@ -104,8 +96,6 @@ export const analyzeTextStructure = async (fileBlob) => {
     // Try each provider
     for (const provider of providerChain) {
         try {
-            console.log(`🔍 Trying structure analysis with ${provider}...`);
-
             let responseText;
             if (provider === 'GEMINI') {
                 const key = geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY;
@@ -129,11 +119,10 @@ export const analyzeTextStructure = async (fileBlob) => {
             }
 
             const json = JSON.parse(responseText.replace(/```json|```/g, '').trim());
-            console.log(`✅ Structure analysis succeeded with ${provider}:`, json);
             return json;
 
         } catch (e) {
-            console.warn(`❌ Structure analysis failed with ${provider}:`, e.message);
+            console.warn(`Structure analysis failed with ${provider}:`, e.message);
             // Continue to next provider
         }
     }

@@ -66,21 +66,17 @@ const EpubViewer = () => {
         }
 
         if (!activeBook.fileData) {
-            console.log('⏳ Waiting for fileData...');
             return;
         }
 
         if (!containerRef.current) {
-            console.log('⏳ Waiting for container...');
             return;
         }
 
         if (isInitializedRef.current) {
-            console.log('📚 Already initialized, skipping...');
             return;
         }
 
-        console.log('📚 Initializing epub.js...');
         isInitializedRef.current = true;
 
         const initBook = async () => {
@@ -95,14 +91,12 @@ const EpubViewer = () => {
 
                 const arrayBuffer = await activeBook.fileData.arrayBuffer();
                 await book.open(arrayBuffer);
-                console.log('✅ Book opened successfully');
 
                 const navigation = await book.loaded.navigation;
                 setToc(navigation.toc || []);
 
                 await book.locations.generate(1600);
                 setTotalPages(book.locations.length());
-                console.log('✅ Locations generated:', book.locations.length());
 
                 const rendition = book.renderTo(viewerDiv, {
                     width: '100%',
@@ -119,7 +113,6 @@ const EpubViewer = () => {
                 } else {
                     await rendition.display();
                 }
-                console.log('✅ Book displayed');
 
                 // Track location changes
                 rendition.on('locationChanged', async (location) => {
@@ -161,7 +154,7 @@ const EpubViewer = () => {
                 setIsLoading(false);
 
             } catch (err) {
-                console.error('❌ Failed to initialize book:', err);
+                console.error('Failed to initialize book:', err);
                 setError('Failed to load EPUB: ' + err.message);
                 setIsLoading(false);
             }
@@ -170,7 +163,6 @@ const EpubViewer = () => {
         initBook();
 
         return () => {
-            console.log('🧹 Cleaning up EPUB...');
             if (renditionRef.current) {
                 try { renditionRef.current.destroy(); } catch (e) { }
                 renditionRef.current = null;
@@ -215,7 +207,6 @@ const EpubViewer = () => {
         const lastCheckpoint = Math.floor(lastCheckpointRef.current / interval);
 
         if (checkpointNumber > lastCheckpoint && newProgress > 5) {
-            console.log(`📍 Checkpoint triggered at ${newProgress}%`);
             setShowCheckpoint(true);
             setIsPromptDismissed(false);
         }
@@ -242,7 +233,7 @@ const EpubViewer = () => {
                 throw new Error("Not enough text content on this page for AI analysis.");
             }
 
-            console.log(`🧠 Generating EPUB Activity with ${currentChapterText.length} chars of context`);
+            console.log(`Generating EPUB Activity with ${currentChapterText.length} chars of context`);
 
             // Create parsed input in the format the AI expects
             const parsedInput = {
@@ -268,7 +259,6 @@ const EpubViewer = () => {
                 }
                 if (itemsToSave.length > 0) {
                     useAppStore.getState().addMultipleFavorites(itemsToSave);
-                    console.log(`💾 Auto-saved ${itemsToSave.length} activities to notebook.`);
                 }
 
                 // Background image generation
@@ -381,7 +371,7 @@ const EpubViewer = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [showGoToPage]);
+    }, [showGoToPage, goNext, goPrev]);
 
     const isBookmarked = bookmarks.some(b => b.bookId === activeBook?.id && b.epubLocation === currentCfi);
 
@@ -436,7 +426,7 @@ const EpubViewer = () => {
                             {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Brain size={18} />}
                         </button>
                         <button
-                            onClick={() => toggleBookmark({ bookId: activeBook?.id, epubLocation: currentCfi, type: 'epub' })}
+                            onClick={() => toggleBookmark(activeBook?.id, null, currentCfi)}
                             className="p-2.5 rounded-full backdrop-blur-sm"
                             style={{
                                 background: isBookmarked ? currentTheme.accent : `${currentTheme.text}20`,
@@ -682,19 +672,20 @@ const EpubViewer = () => {
                     isGenerating={isGenerating && generationMode === 'BACKGROUND'}
                     hasReadyActivities={!!activityData && !isActivityOpen && generationMode === 'BACKGROUND'}
                     onStartActivity={() => handleStartActivity('MICRO', true)}
-                    onOpenActivities={() => toggleActivity(true)}
-                    onDismiss={() => {
+                    onOpenActivity={() => { toggleActivity(true); setGenerationMode(null); }}
+                    onSkip={() => {
                         setIsPromptDismissed(true);
                         setShowCheckpoint(false);
                     }}
                 />
             )}
 
-            {/* Activity Overlay */}
-            {isActivityOpen && (
+            {/* Activity Overlay - Added safety check to prevent showing during background generation */}
+            {isActivityOpen && activityData && generationMode !== 'BACKGROUND' && (
                 <ActivityOverlay
                     data={activityData}
-                    isGenerating={isGenerating}
+                    bookId={activeBook?.id}
+                    onClose={() => { setActivityData(null); toggleActivity(false); }}
                 />
             )}
 

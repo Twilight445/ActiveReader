@@ -25,6 +25,7 @@ const useAppStore = create(
       userSummaries: [],
       bookmarks: [], // [{ bookId, page, timestamp }]
       gallery: [],
+      isActivityOpen: false,
       addToGallery: (item) => set((state) => ({
         gallery: [{ ...item, bookId: item.bookId || state.activeBook?.id?.toString() }, ...state.gallery]
       })),
@@ -127,7 +128,7 @@ const useAppStore = create(
           if (syncId) {
             get().saveUserDataToCloud(bookId.toString());
           }
-        } catch (error) { alert("Local storage full."); }
+        } catch (error) { console.error('Failed to save book locally:', error); alert("Local storage full."); }
       },
 
       // --- 2. CLOUD REGISTRATION (Metadata Only) ---
@@ -185,7 +186,7 @@ const useAppStore = create(
 
           // 2. Sync ALL Books
           const books = state.library;
-          console.log(`🔄 Syncing ${books.length} books...`);
+          console.log(`Syncing ${books.length} books...`);
 
           for (const book of books) {
             await get().saveUserDataToCloud(book.id.toString());
@@ -297,7 +298,6 @@ const useAppStore = create(
         });
 
         return () => {
-          console.log("Cleaning up Sync Listeners");
           unsubBooks();
           unsubData();
           unsubStats();
@@ -355,15 +355,15 @@ const useAppStore = create(
               await setDoc(doc(db, "sync_users", syncId, "book_data", `${bookId}_questions`), { type: 'questions', bookId, items: questions }, { merge: true });
             }
 
-            console.log(`✅ Cloud Sync Success for Book: ${bookId} (Chunked Data)`);
+            console.log(`Cloud Sync Success for Book: ${bookId} (Chunked Data)`);
           }
         } catch (e) {
           // Enhanced error handling for size limit
           if (e.message && e.message.includes('exceeds the maximum allowed size')) {
-            console.error("❌ Cloud Sync Error: Document too large. Try removing some favorites or highlights.");
+            console.error('Cloud Sync Error: Document too large. Try removing some favorites or highlights.');
             // Don't throw - fail silently to not break user experience
           } else {
-            console.error("❌ Cloud Sync Error:", e);
+            console.error('Cloud Sync Error:', e);
           }
         }
       },
@@ -396,7 +396,8 @@ const useAppStore = create(
         if (!bookId) return;
 
         try {
-          await localDb.saveBookFile('pdf', bookId, file);
+          const storagePrefix = state.activeBook?.format === 'EPUB' ? 'epub' : 'pdf';
+          await localDb.saveBookFile(storagePrefix, bookId, file);
           set({ activeBook: { ...state.activeBook, fileData: file, isMissingFile: false } });
         } catch (e) {
           alert("Recovery failed: " + e.message);
@@ -408,7 +409,10 @@ const useAppStore = create(
         const book = state.library.find(b => b.id === bookId);
 
         // 1. Delete Local File
-        if (book && book.type === 'LOCAL') await localDb.deleteBookFile('pdf', bookId);
+        if (book && book.type === 'LOCAL') {
+          const storagePrefix = book.format === 'EPUB' ? 'epub' : 'pdf';
+          await localDb.deleteBookFile(storagePrefix, bookId);
+        }
 
         // 2. Delete from Cloud (Firestore)
         const syncId = useSettingsStore.getState().syncId;
@@ -416,7 +420,7 @@ const useAppStore = create(
           try {
             // Delete Book Metadata
             await deleteDoc(doc(db, "sync_users", syncId, "books", bookId.toString()));
-            console.log(`🗑️ Deleted book ${bookId} from Cloud.`);
+            console.log(`Deleted book ${bookId} from Cloud.`);
           } catch (e) {
             console.error("Failed to delete from cloud", e);
           }

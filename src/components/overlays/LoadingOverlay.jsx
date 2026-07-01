@@ -45,17 +45,6 @@ const LoadingOverlay = () => {
       <div className="w-64 h-2 bg-gray-800 rounded-full mt-8 overflow-hidden">
         <div className="h-full bg-indigo-500 animate-progress-indeterminate"></div>
       </div>
-
-      <style>{`
-        @keyframes progress-indeterminate {
-          0% { width: 0%; margin-left: 0%; }
-          50% { width: 70%; margin-left: 30%; }
-          100% { width: 0%; margin-left: 100%; }
-        }
-        .animate-progress-indeterminate {
-          animation: progress-indeterminate 1.5s infinite linear;
-        }
-      `}</style>
     </div>
   );
 };

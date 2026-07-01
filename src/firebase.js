@@ -1,8 +1,6 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const FALLBACK_KEY = "AIzaSyBYLe-DjRl3SWMOCuV66pZ5AVkgz8by2sA";
@@ -17,7 +15,4 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app);
-// export const storage = getStorage(app); // Disabled due to plan limits
+export const db = getFirestore(app);

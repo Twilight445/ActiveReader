@@ -112,7 +112,7 @@ export const generateWithPawan = async (
 
     // Special handling for Pawan vision models - they have strict payload limits
     if (images && images.length > 2 && (modelKey === 'COSMOSRP_2_5' || modelKey === 'COSMOSRP_2_1')) {
-        console.warn(`⚠️ Pawan vision models limited to 2 images max. Reducing from ${images.length} to 2.`);
+        console.warn(`Pawan vision models limited to 2 images max. Reducing from ${images.length} to 2.`);
 
         // Rebuild messages with only last 2 images
         const reducedImages = images.slice(-2);
@@ -136,12 +136,11 @@ export const generateWithPawan = async (
     }
 
     try {
-        console.log(`🚀 Calling Pawan API: ${model.name} (${useInstructed ? 'instructed' : 'standard'})`);
+        console.log(`Calling Pawan API: ${model.name} (${useInstructed ? 'instructed' : 'standard'})`);
 
-        // Log payload size for vision requests
         if (images && images.length > 0) {
-            const estimatedSize = images.reduce((sum, img) => sum + img.length, 0) / 1024;
-            console.log(`📊 Vision request with ${images.length} images, ~${estimatedSize.toFixed(0)}KB base64 data`);
+          const estimatedSize = images.reduce((sum, img) => sum + img.length, 0) / 1024;
+          console.log(`Vision request with ${images.length} images, ~${estimatedSize.toFixed(0)}KB base64 data`);
         }
 
         const headers = {
@@ -169,7 +168,7 @@ export const generateWithPawan = async (
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`❌ Pawan API Error (${response.status}):`, errorText);
+                console.error(`Pawan API Error (${response.status}):`, errorText);
                 throw new Error(`Pawan API request failed: ${response.status} ${errorText}`);
             }
 
@@ -179,7 +178,7 @@ export const generateWithPawan = async (
             const responseText = data.choices?.[0]?.message?.content;
 
             if (!responseText) {
-                console.error('❌ Empty response from Pawan API:', data);
+                console.error('Empty response from Pawan API:', data);
 
                 // Check for specific Pawan API errors
                 if (data.error?.code === 'server_error' && data.error?.message?.includes('large character/persona')) {
@@ -189,21 +188,21 @@ export const generateWithPawan = async (
                 throw new Error('No content in Pawan API response');
             }
 
-            console.log(`✅ Pawan API response received (${model.name})`);
+            console.log(`Pawan API response received (${model.name})`);
             return responseText;
 
         } catch (fetchError) {
             clearTimeout(timeoutId);
 
             if (fetchError.name === 'AbortError') {
-                console.error(`❌ Pawan API timeout (60s) for ${model.name}`);
-                throw new Error(`API request timed out after 60 seconds. Try reducing the number of pages in settings.`);
+                console.error(`Pawan API timeout (120s) for ${model.name}`);
+                throw new Error(`API request timed out after 120 seconds. Try reducing the number of pages in settings.`);
             }
             throw fetchError;
         }
 
     } catch (error) {
-        console.error(`❌ Pawan API Error (${model.name}):`, error);
+        console.error(`Pawan API Error (${model.name}):`, error);
         throw error;
     }
 };

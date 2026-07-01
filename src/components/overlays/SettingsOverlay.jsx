@@ -19,7 +19,8 @@ const SettingsOverlay = ({ onClose }) => {
         scannedContextLimit: settings.scannedContextLimit,
         textContextLimit: settings.textContextLimit,
         chapterContextLimit: settings.chapterContextLimit,
-        manualChapterMode: settings.manualChapterMode
+        manualChapterMode: settings.manualChapterMode,
+        enablePeriodicCheckpoints: settings.enablePeriodicCheckpoints
     });
 
     const handleSave = () => {
@@ -37,6 +38,7 @@ const SettingsOverlay = ({ onClose }) => {
         settings.setTextContextLimit(form.textContextLimit);
         settings.setChapterContextLimit(form.chapterContextLimit);
         if (settings.manualChapterMode !== form.manualChapterMode) settings.toggleManualChapterMode();
+        if (settings.enablePeriodicCheckpoints !== form.enablePeriodicCheckpoints) settings.togglePeriodicCheckpoints();
 
         onClose();
     };

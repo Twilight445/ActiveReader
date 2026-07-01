@@ -14,7 +14,7 @@ const QuizCard = ({ data, onNext }) => {
   // --- CRASH PREVENTION ---
   // If the AI sends bad data (no question or no options), we skip it safely.
   if (!data || !data.options || !Array.isArray(data.options)) {
-    console.warn("⚠️ Invalid Quiz Data detected:", data);
+    console.warn('Invalid Quiz Data detected:', data);
     return (
       <div className="w-full max-w-md bg-white p-8 rounded-3xl text-center shadow-xl">
         <AlertTriangle className="mx-auto text-yellow-500 mb-4" size={40} />

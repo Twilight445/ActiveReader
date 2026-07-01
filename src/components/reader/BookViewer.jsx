@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, Loader2, ArrowLeft, ZoomIn, ZoomOut, PenTool, X, Trash2, CheckCircle2, UploadCloud, BookOpen, Moon, Sun, List } from 'lucide-react';
+import { Loader2, ArrowLeft, ZoomIn, ZoomOut, Maximize, PenTool, X, Trash2, UploadCloud, BookOpen, Moon, Sun } from 'lucide-react';
 import useAppStore from '../../store/useAppStore';
 
 // Hooks & Components
@@ -29,7 +29,6 @@ import 'react-pdf/dist/Page/TextLayer.css';
 // Zen Reader
 import ZenControls from './ZenControls';
 import '../../styles/ReaderThemes.css';
-import HTMLFlipBook from 'react-pageflip';
 
 // Static loader reference to prevent react-pdf from re-rendering due to prop changes
 const PAGE_LOADER = (
@@ -38,55 +37,49 @@ const PAGE_LOADER = (
   </div>
 );
 
-// Virtualized Page for FlipBook (lazy loads heavy react-pdf canvases)
-const FlipPage = React.forwardRef(({ pageNum, scale, isDrawMode, pdfWidth, currentPage }, ref) => {
-  // Preload Strategy: Keep 2 pages behind, and 4 pages ahead in memory
-  const shouldRender = pageNum >= currentPage - 2 && pageNum <= currentPage + 4;
-
-  return (
-    <div ref={ref} className="page bg-white flex justify-center border-r border-gray-100 shadow-sm" style={{ overflow: 'hidden' }}>
-      {shouldRender ? (
-        <Page
-          pageNumber={pageNum}
-          scale={scale}
-          renderTextLayer={!isDrawMode}
-          renderAnnotationLayer={false}
-          width={pdfWidth}
-          loading={PAGE_LOADER}
-        />
-      ) : (
-        <div style={{ width: pdfWidth * scale, height: pdfWidth * 1.414 }} className="flex items-center justify-center bg-gray-50 text-gray-300">
-           <Loader2 className="animate-spin" />
-        </div>
-      )}
-    </div>
-  );
-});
-FlipPage.displayName = 'FlipPage';
+// --- Gesture Constants ---
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4.0;
+const ZOOM_STEP = 0.15;
+const DOUBLE_TAP_DELAY = 300;
+const DOUBLE_TAP_ZOOM = 2.5;
+const SCRUBBER_HIDE_DELAY = 3500;
 
 const BookViewer = () => {
   const { activeBook, updateBookProgress, updateBookStructure, setScreen, toggleActivity, addHighlight, highlights, deleteHighlight, isActivityOpen } = useAppStore();
-  /* Removed duplicate destructuring */
 
   const [numPages, setNumPages] = useState(null);
-  const [scale, setScale] = useState(1.0);
   const [activityData, setActivityData] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPromptDismissed, setIsPromptDismissed] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [isScrubbing, setIsScrubbing] = useState(false); // Track if user is dragging slider
-  const [sliderValue, setSliderValue] = useState(null); // Local slider state for smooth dragging
-  const [generationMode, setGenerationMode] = useState(null); // 'FOREGROUND' or 'BACKGROUND'
-  const [showGoToPage, setShowGoToPage] = useState(false); // Go to Page modal
-  const [goToPageInput, setGoToPageInput] = useState(''); // Go to Page input value
+  const [generationMode, setGenerationMode] = useState(null);
+  const [showGoToPage, setShowGoToPage] = useState(false);
+  const [goToPageInput, setGoToPageInput] = useState('');
+
+  // --- Zoom & Pan State ---
+  const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+
+  // --- Scrubber State ---
+  const [showScrubber, setShowScrubber] = useState(false);
+  const [scrubberValue, setScrubberValue] = useState(null);
+  const scrubberTimerRef = useRef(null);
 
   // Tools State
   const [selection, setSelection] = useState(null);
   const [isDrawMode, setIsDrawMode] = useState(false);
   const canvasRef = useRef(null);
   const pageContainerRef = useRef(null);
-  const scrollContainerRef = useRef(null);
-  const flipBookRef = useRef(null);
+
+  // Gesture Refs
+  const gestureContainerRef = useRef(null);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOffsetStartRef = useRef({ x: 0, y: 0 });
+  const lastTapRef = useRef(0);
+  const pinchStartDistRef = useRef(null);
+  const pinchStartZoomRef = useRef(1.0);
 
   // Dictionary State
   const [dictionaryData, setDictionaryData] = useState(null);
@@ -132,9 +125,6 @@ const BookViewer = () => {
   // Zen Controls State
   const [showZenControls, setShowZenControls] = useState(false);
 
-
-
-
   // --- GLOBAL DARK MODE EFFECT ---
   useEffect(() => {
     if (readerDarkMode) {
@@ -148,36 +138,32 @@ const BookViewer = () => {
   useEffect(() => {
     if (!activeBook) { setScreen('DASHBOARD'); return; }
 
-    let url = null; // Declare outside so cleanup can access it
+    let url = null;
+    let active = true;
+
+    if (activeBook.type === 'CLOUD') {
+      setPdfUrl(activeBook.url);
+    } else if (activeBook.fileData && activeBook.fileData instanceof Blob) {
+      url = URL.createObjectURL(activeBook.fileData);
+      setPdfUrl(url);
+    }
 
     const initBook = async () => {
       let blob = activeBook.fileData;
+      if (!blob) return;
 
-      // Blob Logic
-      if (activeBook.type === 'CLOUD') {
-        setPdfUrl(activeBook.url);
-      } else if (activeBook.fileData) {
-        if (activeBook.fileData instanceof Blob) {
-          url = URL.createObjectURL(activeBook.fileData);
-          setPdfUrl(url);
-        }
-      }
-
-      // --- SMART NAVIGATION LOGIC ---
-      if (blob && !activeBook.structure && activeBook.progress <= 1) {
-        console.log("🔍 Analyzing Book Structure...");
+      if (!activeBook.structure && activeBook.progress <= 1) {
         let structure = await getPdfOutline(blob);
-
         if (!structure) {
           structure = await analyzeTextStructure(blob);
         }
-
-        if (structure && structure.startPage) {
-          console.log("📍 Smart Start: Jumping to page", structure.startPage);
-          updateBookStructure(structure);
-          updateBookProgress(structure.startPage, numPages);
-        } else if (structure && structure.chapters) {
-          updateBookStructure(structure);
+        if (active && structure) {
+          if (structure.startPage) {
+            updateBookStructure(structure);
+            updateBookProgress(structure.startPage, numPages);
+          } else if (structure.chapters) {
+            updateBookStructure(structure);
+          }
         }
       }
     };
@@ -185,37 +171,25 @@ const BookViewer = () => {
     initBook();
 
     return () => {
-      // Cleanup URL to prevent Memory Leaks
+      active = false;
       if (url) {
         URL.revokeObjectURL(url);
       }
     };
-  }, [activeBook?.id, activeBook?.type, activeBook?.fileData, activeBook?.url]); // Trigger only when file data or book identity changes, not progress.
+  }, [activeBook?.id, activeBook?.type, activeBook?.fileData, activeBook?.url]);
 
   const currentPage = activeBook?.progress || 1;
-
-  // --- SYNC EXTERNAL NAVIGATION WITH FLIPBOOK ---
-  useEffect(() => {
-    if (flipBookRef.current && flipBookRef.current.pageFlip()) {
-      const flipbook = flipBookRef.current.pageFlip();
-      const targetPage = currentPage - 1; // HTMLFlipBook is 0-indexed
-      if (flipbook.getCurrentPageIndex() !== targetPage) {
-        flipbook.turnToPage(targetPage);
-      }
-    }
-  }, [currentPage]);
 
   // --- RESET ON PAGE TURN ---
   useEffect(() => {
     setIsPromptDismissed(false);
     setSelection(null);
+    // Reset zoom & pan on page change
+    setZoomLevel(1.0);
+    setPanOffset({ x: 0, y: 0 });
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    }
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-      scrollContainerRef.current.scrollLeft = 0;
     }
   }, [currentPage]);
 
@@ -276,23 +250,203 @@ const BookViewer = () => {
     canvas.addEventListener('touchmove', draw, { passive: false }); canvas.addEventListener('touchend', stop);
   };
 
-  // --- SMART AI HANDLER (VISION + TEXT) ---
-  const handleStartActivity = async (triggerType = 'MICRO', background = false) => {
-    // Mode must be set BEFORE isGenerating to avoid UI flash
-    setGenerationMode(background ? 'BACKGROUND' : 'FOREGROUND');
+  // =============================================
+  // GESTURE HANDLING — Zoom, Pan, Double-tap, Scrubber
+  // =============================================
 
-    // CRITICAL: Explicitly control overlay - CLOSE in background, OPEN in foreground
-    if (background) {
-      toggleActivity(false); // Ensure overlay is closed for background processing
-    } else {
-      toggleActivity(true); // Open overlay for foreground processing
+  const isZoomed = zoomLevel > 1.05;
+
+  const clampZoom = useCallback((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)), []);
+
+  const resetZoom = useCallback(() => {
+    setZoomLevel(1.0);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
+
+  // --- Scrubber auto-hide logic ---
+  const showScrubberWithTimer = useCallback(() => {
+    setShowScrubber(true);
+    if (scrubberTimerRef.current) clearTimeout(scrubberTimerRef.current);
+    scrubberTimerRef.current = setTimeout(() => setShowScrubber(false), SCRUBBER_HIDE_DELAY);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrubberTimerRef.current) clearTimeout(scrubberTimerRef.current);
+    };
+  }, []);
+
+  // --- MOUSE: Ctrl+Wheel zoom, drag-to-pan ---
+  const handleWheel = useCallback((e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      setZoomLevel(prev => {
+        const next = clampZoom(prev + delta);
+        if (next <= 1.05) setPanOffset({ x: 0, y: 0 });
+        return next;
+      });
     }
+  }, [clampZoom]);
 
+  useEffect(() => {
+    const el = gestureContainerRef.current;
+    if (!el) return;
+    // Must use non-passive to allow preventDefault on wheel with ctrlKey
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  const handleMouseDown = useCallback((e) => {
+    if (isDrawMode) return;
+    if (!isZoomed) return;
+    if (e.button !== 0) return; // Left click only
+    setIsPanning(true);
+    panStartRef.current = { x: e.clientX, y: e.clientY };
+    panOffsetStartRef.current = { ...panOffset };
+    e.preventDefault();
+  }, [isDrawMode, isZoomed, panOffset]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isPanning) return;
+    const dx = e.clientX - panStartRef.current.x;
+    const dy = e.clientY - panStartRef.current.y;
+    setPanOffset({
+      x: panOffsetStartRef.current.x + dx / zoomLevel,
+      y: panOffsetStartRef.current.y + dy / zoomLevel,
+    });
+  }, [isPanning, zoomLevel]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  // --- TOUCH: Pinch-to-zoom, double-tap, single-finger pan ---
+  const handleTouchStart = useCallback((e) => {
+    if (isDrawMode) return;
+
+    if (e.touches.length === 2) {
+      // Pinch start
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDistRef.current = Math.hypot(dx, dy);
+      pinchStartZoomRef.current = zoomLevel;
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      // Double-tap detection
+      const now = Date.now();
+      if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+        e.preventDefault();
+        if (isZoomed) {
+          resetZoom();
+        } else {
+          setZoomLevel(DOUBLE_TAP_ZOOM);
+        }
+        lastTapRef.current = 0;
+        return;
+      }
+      lastTapRef.current = now;
+
+      // Pan start (when zoomed)
+      if (isZoomed) {
+        setIsPanning(true);
+        panStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panOffsetStartRef.current = { ...panOffset };
+      }
+    }
+  }, [isDrawMode, zoomLevel, isZoomed, resetZoom, panOffset]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (isDrawMode) return;
+
+    if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const scaleFactor = dist / pinchStartDistRef.current;
+      const newZoom = clampZoom(pinchStartZoomRef.current * scaleFactor);
+      setZoomLevel(newZoom);
+      if (newZoom <= 1.05) setPanOffset({ x: 0, y: 0 });
+    } else if (e.touches.length === 1 && isPanning) {
+      const dx = e.touches[0].clientX - panStartRef.current.x;
+      const dy = e.touches[0].clientY - panStartRef.current.y;
+      setPanOffset({
+        x: panOffsetStartRef.current.x + dx / zoomLevel,
+        y: panOffsetStartRef.current.y + dy / zoomLevel,
+      });
+    }
+  }, [isDrawMode, isPanning, zoomLevel, clampZoom]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) {
+      pinchStartDistRef.current = null;
+    }
+    if (e.touches.length === 0) {
+      setIsPanning(false);
+    }
+  }, []);
+
+  // --- CENTER TAP → toggle scrubber, LEFT/RIGHT → navigate ---
+  const handleViewerClick = useCallback((e) => {
+    // Skip if user is selecting text, drawing, or interacting with buttons
+    if (isDrawMode) return;
+    const target = e.target;
+    if (target.closest('button') || target.closest('input') || target.closest('a') || target.closest('.interactive')) return;
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) return;
+
+    // Ignore if panning happened (mouse moved > 5px)
+    if (isPanning) return;
+
+    const width = window.innerWidth;
+    const x = e.clientX;
+
+    if (zenMode) {
+      // Zen mode zones
+      if (x < width * 0.2) {
+        if (currentPage > 1) updateBookProgress(currentPage - 1, numPages);
+      } else if (x > width * 0.8) {
+        if (currentPage < numPages) updateBookProgress(currentPage + 1, numPages);
+      } else {
+        setShowZenControls(!showZenControls);
+      }
+    } else {
+      // Normal mode: center tap toggles scrubber
+      if (x < width * 0.2) {
+        if (currentPage > 1) updateBookProgress(currentPage - 1, numPages);
+      } else if (x > width * 0.8) {
+        if (currentPage < numPages) updateBookProgress(currentPage + 1, numPages);
+      } else {
+        showScrubberWithTimer();
+      }
+    }
+  }, [isDrawMode, isPanning, zenMode, currentPage, numPages, updateBookProgress, showZenControls, showScrubberWithTimer]);
+
+  // --- Keyboard navigation ---
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (showGoToPage) return;
+      if (e.key === 'ArrowRight' && currentPage < numPages) updateBookProgress(currentPage + 1, numPages);
+      if (e.key === 'ArrowLeft' && currentPage > 1) updateBookProgress(currentPage - 1, numPages);
+      if (e.key === '0' || e.key === 'Escape') resetZoom();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showGoToPage, currentPage, numPages, updateBookProgress, resetZoom]);
+
+  // --- SMART AI HANDLER (VISION + TEXT) --- (Preserved from original)
+  const handleStartActivity = async (triggerType = 'MICRO', background = false) => {
+    setGenerationMode(background ? 'BACKGROUND' : 'FOREGROUND');
+    if (background) {
+      toggleActivity(false);
+    } else {
+      toggleActivity(true);
+    }
     setIsGenerating(true);
 
     try {
       let fileToRead = activeBook.fileData;
-
       if (!fileToRead && activeBook.url) {
         try {
           const resp = await fetch(activeBook.url);
@@ -305,134 +459,85 @@ const BookViewer = () => {
       if (!fileToRead) throw new Error("No file content found.");
 
       const settings = useSettingsStore.getState();
-
-      // --- CONTEXT STRATEGY LOGIC ---
-      let limit = 5; // Fallback
-
-      // 1. Determine Context Limit based on Type & Source
+      let limit = 5;
       if (triggerType === 'CHAPTER_END') {
         limit = settings.chapterContextLimit || 15;
       } else {
-        // For Checkpoints (Micro)
-        // Default to Text Limit if Scanned is undefined, but check explicitly for boolean true
         const isScanned = activeBook.isScanned === true;
         limit = isScanned ? (settings.scannedContextLimit || 3) : (settings.textContextLimit || 5);
       }
-
-      // Safety check for limit
       if (!limit || typeof limit !== 'number' || limit < 1) {
-        console.warn("⚠️ Invalid context limit detected:", limit, "Resetting to 5.");
+        console.warn('Invalid context limit detected:', limit, 'Resetting to 5.');
         limit = 5;
       }
 
-      console.log(`🧠 Generating Activity (${triggerType}) with context: ${limit} pages. (Scanned: ${activeBook.isScanned})`);
-
-      // STEP 1: Smart Parse (Returns { mode, data })
-      // Request specific page range based on limit
       const startPage = Math.max(1, currentPage - limit + 1);
       const parsedInput = await parsePdf(fileToRead, startPage, currentPage);
 
-      // Check for errors
       if (!parsedInput || parsedInput.mode === 'ERROR' || !parsedInput.data) {
-        console.error("❌ PDF parsing failed or returned no data");
+        console.error('PDF parsing failed or returned no data');
         throw new Error("Could not extract content from this page. The PDF may be corrupted or the page may be unreadable.");
       }
 
-      console.log(`✅ Parsed PDF in ${parsedInput.mode} mode with ${Array.isArray(parsedInput.data) ? parsedInput.data.length + ' images' : 'text'}`);
-
-      // STEP 2: Send to AI Factory
-      const aiData = await generateActivities(
-        parsedInput,
-        triggerType || 'MICRO'
-      );
+      const aiData = await generateActivities(parsedInput, triggerType || 'MICRO');
 
       if (aiData) {
         setActivityData(aiData);
-        // REMOVED: setIsGenerating(false); - Let finally block handle this
-
-        // --- NEW: AUTO-SAVE ALL GENERATED CONTENT ---
         const bookId = activeBook.id.toString();
         const itemsToSave = [];
-
-        // Save Quizzes
         if (aiData.quiz && Array.isArray(aiData.quiz)) {
           aiData.quiz.forEach(q => itemsToSave.push({ ...q, bookId }));
         }
-
-        // Save Concept Map
         if (aiData.concept_map) {
           itemsToSave.push({ ...aiData.concept_map, bookId });
         }
-
-        // Batch Save
         if (itemsToSave.length > 0) {
           useAppStore.getState().addMultipleFavorites(itemsToSave);
-          console.log(`💾 Auto-saved ${itemsToSave.length} activities to notebook.`);
         }
-        // --------------------------------------------
 
-        // STEP 3: Background Image Generation
         const visualTask = aiData.quiz?.find(q => q.type === 'visual');
-        const settings = useSettingsStore.getState();
-
-        if (visualTask && visualTask.image_prompt && settings.imageGenProvider !== 'NONE') {
+        const imgSettings = useSettingsStore.getState();
+        if (visualTask && visualTask.image_prompt && imgSettings.imageGenProvider !== 'NONE') {
           const prompt = visualTask.image_prompt;
           const imageId = Date.now().toString();
-
-          console.log("🎨 Starting Background Generation for:", prompt);
-
           useAppStore.getState().addToGallery({
-            id: imageId, bookId: activeBook.id, timestamp: Date.now(), prompt: prompt, url: null, status: 'pending'
+            id: imageId, bookId: activeBook.id, timestamp: Date.now(), prompt, url: null, status: 'pending'
           });
-
           generateImageBackground(prompt)
-            .then((url) => {
-              console.log("🎨 Background Gen Complete:", url);
-              useAppStore.getState().updateGalleryImage(imageId, url, 'success');
-            })
-            .catch((err) => {
-              console.error("🎨 Background Gen Failed:", err);
-              useAppStore.getState().updateGalleryImage(imageId, null, 'error');
-            });
+            .then((url) => { useAppStore.getState().updateGalleryImage(imageId, url, 'success'); })
+            .catch((err) => { console.error('Background image generation failed:', err); useAppStore.getState().updateGalleryImage(imageId, null, 'error'); });
         }
       } else {
         toggleActivity(false);
         alert("AI failed to read this page. Please try another page.");
       }
-
     } catch (error) {
       console.error(error);
       toggleActivity(false);
       alert("Error generating activity. Check internet connection.");
     } finally {
-      // Always reset generating state after completion
       setIsGenerating(false);
-      // Don't reset generationMode here - keep it so CheckpointPrompt knows to show "Open Activities"
     }
   };
 
   if (!activeBook) return <div>Loading...</div>;
   const pageHighlights = highlights.filter(h => h.bookId === activeBook.id && h.page === currentPage);
+
   // --- RESPONSIVE PDF WIDTH ---
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   useEffect(() => {
     let timeoutId = null;
     const handleResize = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        setWindowWidth(window.innerWidth);
-      }, 150); // Debounce resize to prevent rapid re-renders
+      timeoutId = setTimeout(() => { setWindowWidth(window.innerWidth); }, 150);
     };
     window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      clearTimeout(timeoutId);
-    };
+    return () => { window.removeEventListener('resize', handleResize); clearTimeout(timeoutId); };
   }, []);
 
   const pdfWidth = windowWidth > 800 ? 600 : windowWidth - 32;
 
-  // Get theme background color for container
+  // Theme helpers
   const getThemeBg = () => {
     switch (readerTheme) {
       case 'dark': return 'bg-[#1C1C1E]';
@@ -442,7 +547,6 @@ const BookViewer = () => {
     }
   };
 
-  // Get font class
   const getFontClass = () => {
     switch (readerFont) {
       case 'Georgia': return 'font-georgia';
@@ -452,65 +556,27 @@ const BookViewer = () => {
     }
   };
 
-  // --- ZEN MODE CLICK HANDLER (Event Delegation) ---
-  const handleZenClick = (e) => {
-    // 1. If not in Zen Mode, do nothing (let default events happen)
-    if (!zenMode) return;
-
-    // 2. Ignore clicks on interactive elements (buttons, inputs, links, etc.)
-    const target = e.target;
-    if (target.closest('button') || target.closest('input') || target.closest('a') || target.closest('.interactive')) {
-      return;
-    }
-
-    // 3. Ignore if user is selecting text (selection is not empty)
-    const selection = window.getSelection();
-    if (selection && selection.toString().trim().length > 0) {
-      return;
-    }
-
-    // 4. Calculate Tap Position
-    const width = window.innerWidth;
-    const x = e.clientX;
-
-    // LEFT ZONE (0% - 20%) -> Previous Page
-    if (x < width * 0.2) {
-      if (currentPage > 1) updateBookProgress(currentPage - 1, numPages);
-    }
-    // RIGHT ZONE (80% - 100%) -> Next Page
-    else if (x > width * 0.8) {
-      if (currentPage < numPages) updateBookProgress(currentPage + 1, numPages);
-    }
-    // CENTER ZONE (20% - 80%) -> Toggle Controls
-    else {
-      setShowZenControls(!showZenControls);
-    }
+  // --- Scrubber handlers ---
+  const handleScrubberChange = (e) => {
+    setScrubberValue(parseInt(e.target.value));
+    showScrubberWithTimer();
   };
 
-  // --- SLIDER LOGIC ---
-  const handleSliderChange = (e) => {
-    setSliderValue(parseInt(e.target.value));
-  };
-
-  const handleSliderCommit = () => {
-    if (sliderValue !== null) {
-      updateBookProgress(sliderValue, numPages);
-      // Small delay to prevent flickering before setSliderValue(null)
-      setTimeout(() => setSliderValue(null), 100);
+  const handleScrubberCommit = () => {
+    if (scrubberValue !== null) {
+      updateBookProgress(scrubberValue, numPages);
+      setTimeout(() => setScrubberValue(null), 100);
     }
   };
 
   return (
     <div
       className={`zen-reader h-screen w-screen flex flex-col overflow-hidden theme-${readerTheme} ${getFontClass()}`}
-      onClick={handleZenClick}
     >
-
+      {/* HEADER */}
       <ReaderHeader
         zenMode={zenMode}
         activeBook={activeBook}
-        scale={scale}
-        setScale={setScale}
         readerDarkMode={readerDarkMode}
         toggleReaderDarkMode={toggleReaderDarkMode}
         isDrawMode={isDrawMode}
@@ -518,93 +584,54 @@ const BookViewer = () => {
         setScreen={setScreen}
       />
 
-
-
-      {/* TAP ZONES - Removed to prevent blocking text selection. Using event delegation instead. */}
-
-      <div className="flex-1 flex items-center justify-center overflow-auto">
-        <div className="relative shadow-xl transition-all duration-200 origin-top" style={{ width: 'fit-content', height: 'fit-content' }}>
-
-          {/* BOOKMARK RIBBON */}
-          {useAppStore(s => s.bookmarks).some(b => b.bookId === activeBook.id && b.page === currentPage) && (
-            <div className="bookmark-indicator visible" />
-          )}
-
+      {/* ========= MAIN VIEWER AREA ========= */}
+      <div
+        ref={gestureContainerRef}
+        className={`flex-1 flex items-center justify-center overflow-hidden relative select-none ${isZoomed && !isDrawMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
+        style={{ touchAction: isDrawMode ? 'auto' : 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onClick={handleViewerClick}
+      >
+        <div
+          className="relative transition-transform origin-center"
+          style={{
+            transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+            transition: isPanning ? 'none' : 'transform 0.2s ease-out',
+            willChange: 'transform',
+          }}
+        >
           <div
             ref={pageContainerRef}
-            className={`relative min-h-[500px] transition-all duration-300 zen-page ${(readerTheme === 'dark' || readerTheme === 'night') ? 'pdf-dark-mode' : ''}`}
+            className={`relative min-h-[300px] transition-all duration-300 zen-page ${(readerTheme === 'dark' || readerTheme === 'night') ? 'pdf-dark-mode' : ''}`}
           >
-
             {pdfUrl ? (
               <Document
                 file={pdfUrl}
-                onLoadSuccess={({ numPages }) => { setNumPages(numPages); if (!activeBook.totalPages) updateBookProgress(currentPage, numPages); }}
-                // ... (keep existing loaders)
+                onLoadSuccess={({ numPages: n }) => { setNumPages(n); if (!activeBook.totalPages) updateBookProgress(currentPage, n); }}
                 loading={<div className="h-96 flex flex-col items-center justify-center text-gray-500"><Loader2 className="animate-spin mb-2" size={40} /><p className="font-bold text-sm">Loading Book...</p></div>}
                 error={<div className="h-96 flex items-center justify-center text-red-500 p-8 text-center font-bold">Failed to load PDF.</div>}
               >
-                {/* 3D INTERACTIVE FLIPBOOK RENDERING */}
-                <div 
-                  className="flex justify-center items-center w-full relative z-10 py-20 px-10 overflow-hidden" 
-                  style={{ 
-                    pointerEvents: isDrawMode ? 'none' : 'auto',
-                    minHeight: '100vh',
-                    perspective: '2000px'
-                  }}
-                >
-                  <div 
-                    className="transition-transform duration-300 ease-out flex items-center justify-center"
-                    style={{ 
-                      transform: `scale(${scale})`,
-                      transformOrigin: 'center center',
-                      willChange: 'transform',
-                      backfaceVisibility: 'hidden',
-                      WebkitBackfaceVisibility: 'hidden'
-                    }}
-                  >
-                    {numPages && (
-                      <HTMLFlipBook
-                        width={pdfWidth}
-                        height={pdfWidth * 1.414}
-                        size="fixed"
-                        minWidth={300}
-                        maxWidth={pdfWidth}
-                        minHeight={400}
-                        maxHeight={pdfWidth * 1.414}
-                        maxShadowOpacity={0.4}
-                        showCover={false}
-                        mobileScrollSupport={true}
-                        usePortrait={true}
-                        flippingTime={800}
-                        drawShadow={true}
-                        startPage={currentPage - 1}
-                        onFlip={(e) => {
-                          const newPage = e.data + 1;
-                          if (newPage !== currentPage) {
-                            updateBookProgress(newPage, numPages);
-                          }
-                        }}
-                        ref={flipBookRef}
-                        className="flipbook-container rounded-lg shadow-2xl"
-                      >
-                        {Array.from({ length: numPages }).map((_, i) => (
-                          <FlipPage
-                            key={`flip-page-${i + 1}`}
-                            pageNum={i + 1}
-                            scale={1.0} // Keep internal PDF scale at 1.0, we scale the container
-                            isDrawMode={isDrawMode}
-                            pdfWidth={pdfWidth}
-                            currentPage={currentPage}
-                          />
-                        ))}
-                      </HTMLFlipBook>
-                    )}
-                  </div>
-                </div>
-
+                <Page
+                  pageNumber={currentPage}
+                  width={pdfWidth}
+                  renderTextLayer={!isDrawMode}
+                  renderAnnotationLayer={false}
+                  loading={PAGE_LOADER}
+                />
               </Document>
             ) : (
               <div className="h-96 flex flex-col items-center justify-center text-gray-500"><Loader2 className="animate-spin mb-2" size={40} /><p className="font-bold text-sm">Preparing...</p></div>
+            )}
+
+            {/* BOOKMARK RIBBON */}
+            {useAppStore(s => s.bookmarks).some(b => b.bookId === activeBook.id && b.page === currentPage) && (
+              <div className="bookmark-indicator visible" />
             )}
 
             {/* HIGHLIGHTS */}
@@ -622,76 +649,71 @@ const BookViewer = () => {
                     opacity: 0.4,
                     mixBlendMode: 'multiply'
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteHighlight(h.id);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); deleteHighlight(h.id); }}
                 >
                   <button className="hidden md:block group-hover:flex absolute -top-4 -right-4 bg-red-500 text-white p-1 rounded-full shadow-sm z-10 scale-[0.6]"><Trash2 size={16} /></button>
                 </div>
               ) : null
             ))}
 
-            {isDrawMode && <canvas ref={canvasRef} className="absolute inset-0 z-50 cursor-crosshair touch-none" width={pdfWidth * scale} height={1200 * scale} onMouseDown={startDrawing} onTouchStart={startDrawing} />}
+            {isDrawMode && <canvas ref={canvasRef} className="absolute inset-0 z-50 cursor-crosshair touch-none" width={pdfWidth} height={pdfWidth * 1.414} onMouseDown={startDrawing} onTouchStart={startDrawing} />}
           </div>
         </div>
       </div>
 
-      {/* FLOATING VERTICAL PAGE SCROLLER - Right side */}
-      {numPages > 1 && (
-        <div className="fixed right-2 top-1/2 -translate-y-1/2 z-40 opacity-30 hover:opacity-100 transition-opacity duration-300 group">
-          {/* Current page indicator */}
-          <div className="absolute -left-16 top-1/2 -translate-y-1/2 bg-indigo-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-            Page {sliderValue !== null ? sliderValue : currentPage}
-          </div>
-
-          {/* Vertical slider */}
-          <div className="relative h-64 w-8 bg-gray-200 dark:bg-gray-700 rounded-full shadow-lg flex items-center justify-center">
-            <input
-              type="range"
-              min="1"
-              max={numPages}
-              value={sliderValue !== null ? sliderValue : currentPage}
-              onInput={handleSliderChange}
-              onChange={handleSliderChange}
-              onMouseUp={handleSliderCommit}
-              onTouchEnd={handleSliderCommit}
-              className="h-56 w-2 appearance-none cursor-pointer accent-indigo-600"
-              style={{
-                writingMode: 'vertical-lr',
-                direction: 'rtl',
-                background: 'transparent'
-              }}
-            />
-          </div>
-
-          {/* Page numbers */}
-          <div className="flex flex-col justify-between h-64 absolute left-0 top-0 -ml-5 text-xs font-mono text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-            <span>1</span>
-            <span>{numPages}</span>
-          </div>
+      {/* ========= FLOATING ZOOM CONTROLS ========= */}
+      <div className="fixed bottom-24 left-4 z-40 flex flex-col gap-1.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); setZoomLevel(prev => clampZoom(prev + ZOOM_STEP * 2)); }}
+          className="w-10 h-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg flex items-center justify-center text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors active:scale-95"
+          title="Zoom In"
+        >
+          <ZoomIn size={18} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); const next = clampZoom(zoomLevel - ZOOM_STEP * 2); setZoomLevel(next); if (next <= 1.05) setPanOffset({ x: 0, y: 0 }); }}
+          className="w-10 h-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg flex items-center justify-center text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors active:scale-95"
+          title="Zoom Out"
+        >
+          <ZoomOut size={18} />
+        </button>
+        {isZoomed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); resetZoom(); }}
+            className="w-10 h-10 bg-indigo-600 text-white rounded-xl shadow-lg flex items-center justify-center hover:bg-indigo-700 transition-colors active:scale-95"
+            title="Reset Zoom"
+          >
+            <Maximize size={16} />
+          </button>
+        )}
+        {/* Zoom level indicator */}
+        <div className="text-[10px] font-mono text-center text-gray-400 dark:text-gray-500 mt-0.5">
+          {Math.round(zoomLevel * 100)}%
         </div>
-      )}
+      </div>
 
+      {/* ========= PAGE SCRUBBER (Auto-hidden) ========= */}
       <ReaderFooter
         zenMode={zenMode}
         numPages={numPages}
         currentPage={currentPage}
-        sliderValue={sliderValue}
-        handleSliderChange={handleSliderChange}
-        handleSliderCommit={handleSliderCommit}
-        updateBookProgress={updateBookProgress}
+        showScrubber={showScrubber}
+        scrubberValue={scrubberValue}
+        handleScrubberChange={handleScrubberChange}
+        handleScrubberCommit={handleScrubberCommit}
         showGoToPage={showGoToPage}
         setShowGoToPage={setShowGoToPage}
         goToPageInput={goToPageInput}
         setGoToPageInput={setGoToPageInput}
+        updateBookProgress={updateBookProgress}
         manualChapterMode={manualChapterMode}
         handleStartActivity={handleStartActivity}
+        onScrubberInteract={showScrubberWithTimer}
       />
 
       {isGenerating && generationMode === 'FOREGROUND' && <LoadingOverlay />}
 
-      {/* Logic to keep CheckpointPrompt visible during background generation or when results are ready but not opened */}
+      {/* CheckpointPrompt during background generation */}
       {
         (!isPromptDismissed && (
           (triggerState.show && (!isGenerating || generationMode === 'BACKGROUND') && !isActivityOpen) ||
@@ -713,19 +735,18 @@ const BookViewer = () => {
         )
       }
 
-
-
+      {/* Text Selection Bar */}
       {
         selection && !isDrawMode && (
-          <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 shadow-xl z-[60] animate-in slide-in-from-bottom flex flex-col gap-3">
+          <div className="fixed bottom-0 left-0 w-full bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 shadow-xl z-[60] animate-in slide-in-from-bottom flex flex-col gap-3">
             <div className="flex justify-between items-center">
               <div className="flex gap-2">
-                <button onClick={handleDefine} className="px-4 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-gray-700 transition">
+                <button onClick={handleDefine} className="px-4 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-gray-700 dark:hover:bg-gray-300 transition">
                   <BookOpen size={14} /> Define
                 </button>
-                <span className="text-xs font-bold text-gray-500 uppercase self-center ml-2 border-l pl-2 border-gray-300">Highlight</span>
+                <span className="text-xs font-bold text-gray-500 uppercase self-center ml-2 border-l pl-2 border-gray-300 dark:border-gray-600">Highlight</span>
               </div>
-              <button onClick={() => { setSelection(null); window.getSelection().removeAllRanges(); }} className="p-1 bg-gray-100 rounded-full"><X size={16} /></button>
+              <button onClick={() => { setSelection(null); window.getSelection().removeAllRanges(); }} className="p-1 bg-gray-100 dark:bg-gray-700 rounded-full"><X size={16} /></button>
             </div>
             <div className="flex justify-between gap-3">{['#fff59d', '#a5d6a7', '#90caf9', '#ef9a9a'].map(color => (<button key={color} onClick={() => saveHighlight(color)} className="flex-1 h-12 rounded-xl border-2 border-transparent transition shadow-sm" style={{ backgroundColor: color }} />))}</div>
           </div>
@@ -734,7 +755,7 @@ const BookViewer = () => {
 
       {/* Auto-Prompt Logic */}
       {
-        !isPromptDismissed && !isGenerating && !activityData && !isScrubbing && triggerState.show && (
+        !isPromptDismissed && !isGenerating && !activityData && triggerState.show && (
           (triggerState.type === 'CHAPTER_END' && !manualChapterMode) ||
           (triggerState.type !== 'CHAPTER_END' && enablePeriodicCheckpoints)
         ) && (
@@ -750,17 +771,16 @@ const BookViewer = () => {
       {/* FILE RECOVERY UI */}
       {
         activeBook.isMissingFile && (
-          <div className="fixed inset-0 z-[100] bg-gray-100 flex flex-col items-center justify-center p-6 text-center">
-            <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full animate-in zoom-in">
-              <div className="bg-red-100 text-red-600 p-4 rounded-full inline-block mb-4">
+          <div className="fixed inset-0 z-[100] bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-xl max-w-md w-full animate-in zoom-in">
+              <div className="bg-red-100 dark:bg-red-900/30 text-red-600 p-4 rounded-full inline-block mb-4">
                 <Trash2 size={32} />
               </div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">Local File Not Found</h2>
-              <p className="text-gray-500 mb-6 text-sm">
+              <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">Local File Not Found</h2>
+              <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
                 The PDF file for <span className="font-bold">"{activeBook.title}"</span> is missing from this device.
                 This happens if you cleared browser data or synced from another device.
               </p>
-
               <label className="block w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl cursor-pointer transition shadow-lg">
                 <span className="flex items-center justify-center gap-2">
                   <UploadCloud size={20} /> Re-upload PDF
@@ -769,15 +789,10 @@ const BookViewer = () => {
                   type="file"
                   accept=".pdf"
                   className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files[0]) useAppStore.getState().recoverLocalBook(e.target.files[0]);
-                  }}
+                  onChange={(e) => { if (e.target.files[0]) useAppStore.getState().recoverLocalBook(e.target.files[0]); }}
                 />
               </label>
-              <button
-                onClick={() => setScreen('DASHBOARD')}
-                className="mt-4 text-gray-400 font-bold hover:text-gray-600 text-sm"
-              >
+              <button onClick={() => setScreen('DASHBOARD')} className="mt-4 text-gray-400 font-bold hover:text-gray-600 dark:hover:text-gray-200 text-sm">
                 Go Back
               </button>
             </div>
@@ -785,7 +800,7 @@ const BookViewer = () => {
         )
       }
 
-      {/* ACTIVITY OVERLAY - Added safety check to prevent showing during background generation */}
+      {/* ACTIVITY OVERLAY */}
       {
         isActivityOpen && activityData && generationMode !== 'BACKGROUND' && (
           <ActivityOverlay
@@ -797,9 +812,9 @@ const BookViewer = () => {
       }
 
       {/* DICTIONARY MODAL */}
-      <DictionaryModal 
-        dictionaryData={dictionaryData} 
-        onClose={() => setDictionaryData(null)} 
+      <DictionaryModal
+        dictionaryData={dictionaryData}
+        onClose={() => setDictionaryData(null)}
       />
 
       {/* ZEN CONTROLS OVERLAY */}
@@ -812,8 +827,8 @@ const BookViewer = () => {
             numPages={numPages}
             onBack={() => setScreen('DASHBOARD')}
             onNavigateToPage={(page) => updateBookProgress(page, numPages)}
-            scale={scale}
-            setScale={setScale}
+            scale={zoomLevel}
+            setScale={setZoomLevel}
           />
         )
       }

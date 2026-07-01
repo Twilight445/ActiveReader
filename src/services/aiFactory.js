@@ -6,6 +6,9 @@ import { generateWithPawan } from './pawanService';
 const getGenAI = () => {
   const { geminiApiKey } = useSettingsStore.getState();
   const key = geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY;
+  if (!key) {
+    throw new Error('Gemini API key is not configured. Please add it in Settings.');
+  }
   return new GoogleGenerativeAI(key);
 }
 
@@ -104,7 +107,7 @@ export const generateActivities = async (parsedInput, type = 'MICRO') => {
 
   const { enableAiFeatures, preferredAiProvider, enableAutoFallback, visionProvider } = useSettingsStore.getState();
   if (!enableAiFeatures) {
-    console.warn("🛑 AI Features are disabled in settings.");
+    console.warn('AI features are disabled in settings.');
     return null;
   }
 
@@ -144,6 +147,11 @@ export const generateActivities = async (parsedInput, type = 'MICRO') => {
     }
   }
 
+  if (providerChain.length === 0) {
+    console.error('No AI providers configured. Check your preferred provider settings.');
+    return null;
+  }
+
   const promptPrefix = type === 'CHAPTER_END'
     ? "You are an expert examiner. This is the end of a chapter. Create a comprehensive review."
     : "You are a Social Science tutor. Analyze this text.";
@@ -152,11 +160,7 @@ export const generateActivities = async (parsedInput, type = 'MICRO') => {
   let lastError = null;
   for (const provider of providerChain) {
     try {
-      console.log(`🤖 Trying ${provider} in ${mode} mode...`);
-
       const textResponse = await tryProvider(provider, mode, data, type, promptPrefix);
-
-      console.log(`📝 Raw response from ${provider}:`, textResponse.substring(0, 200) + '...');
 
       // Clean up markdown and various response formats
       let cleanedResponse = textResponse
@@ -164,26 +168,26 @@ export const generateActivities = async (parsedInput, type = 'MICRO') => {
         .replace(/```\s*/g, '')
         .trim();
 
-      // Try to extract JSON if it's embedded in text
-      const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedResponse = jsonMatch[0];
+      // Try to parse directly first, fall back to regex extraction
+      try {
+        JSON.parse(cleanedResponse);
+      } catch {
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          cleanedResponse = jsonMatch[0];
+        }
       }
-
-      console.log(`🧹 Cleaned response:`, cleanedResponse.substring(0, 200) + '...');
 
       let dataJSON;
       try {
         dataJSON = JSON.parse(cleanedResponse);
       } catch (parseError) {
-        console.error(`❌ JSON Parse Error for ${provider}:`, parseError.message);
-        console.error(`Raw response that failed to parse:`, textResponse);
+        console.warn(`JSON parse error for ${provider}: ${parseError.message}`);
         throw new Error(`Invalid JSON response from ${provider}: ${parseError.message}`);
       }
 
-      // 🍌 "Nano Banana" Step: Visual Concept Processing
+      // Visual Concept Processing
       if (dataJSON.visual_concept) {
-        console.log("🍌 Nano Banana logic triggered:", dataJSON.visual_concept);
         if (!dataJSON.quiz) dataJSON.quiz = [];
         dataJSON.quiz.push({
           type: 'visual',
@@ -193,25 +197,19 @@ export const generateActivities = async (parsedInput, type = 'MICRO') => {
         });
       }
 
-      console.log(`✅ AI Data Generated using ${provider}:`, dataJSON);
       return dataJSON;
 
     } catch (error) {
-      console.warn(`❌ ${provider} failed:`, error.message);
-      console.warn(`Error details:`, error);
+      console.warn(`${provider} failed: ${error.message}`);
       lastError = error;
 
-      // If this is the last provider in the chain, throw the error
       if (provider === providerChain[providerChain.length - 1]) {
-        console.error("❌ All AI providers failed. Last error:", error);
+        console.error('All AI providers failed. Last error:', lastError);
         return null;
       }
-
-      // Otherwise, continue to next provider
-      console.log(`⚠️ Falling back to next provider...`);
     }
   }
 
-  console.error("❌ All AI providers failed.");
+  console.error('All AI providers failed.');
   return null;
 };

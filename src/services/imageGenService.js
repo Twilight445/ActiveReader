@@ -13,13 +13,12 @@ const generateFreepikImage = async (prompt) => {
   const apiKey = freepikApiKey || import.meta.env.VITE_FREEPIK_API_KEY;
 
   if (!apiKey) {
-    console.warn("⚠️ Freepik API Key missing.");
+    console.warn('Freepik API Key missing.');
     return null;
   }
 
   // Use local proxy defined in vite.config.js to bypass CORS
   // Target: https://api.freepik.com/v1/ai/text-to-image
-  console.log(`🎨 Freepik: Requesting image (Classic Fast) via Proxy...`);
 
   try {
     const response = await fetch("/freepik-api/ai/text-to-image", {
@@ -52,7 +51,7 @@ const generateFreepikImage = async (prompt) => {
     throw new Error("No image data returned from Freepik");
 
   } catch (error) {
-    console.error("❌ Freepik Failed:", error);
+    console.error('Freepik Failed:', error);
     return null;
   }
 };
@@ -61,7 +60,6 @@ const generateFreepikImage = async (prompt) => {
 export const generateImageBackground = async (prompt) => {
   const { imageGenProvider } = useSettingsStore.getState();
 
-  console.log(`🎨 Generating Image via [${imageGenProvider}] for:`, prompt);
 
   if (imageGenProvider === 'NONE') return getFallbackUrl(prompt);
 
@@ -69,7 +67,7 @@ export const generateImageBackground = async (prompt) => {
   if (imageGenProvider === 'FREEPIK' || !imageGenProvider || imageGenProvider === 'SUBNP') {
     const result = await generateFreepikImage(prompt);
     if (result) return result;
-    console.warn("⚠️ Freepik failed, returning fallback.");
+    console.warn('Freepik failed, returning fallback.');
     return getFallbackUrl(prompt);
   }
 
