@@ -257,6 +257,8 @@ const useAppStore = create(
               // gallery remains local-only to prevent size issues
             };
           });
+        }, (error) => {
+          console.warn("Firestore sync books permission denied / failed:", error.message);
         });
 
         // Listener for Book Data Subcollections (to bypass 1MB limit)
@@ -284,6 +286,8 @@ const useAppStore = create(
               favorites: dedupeFavorites([...state.favorites, ...incomingFavorites])
             };
           });
+        }, (error) => {
+          console.warn("Firestore sync book data permission denied / failed:", error.message);
         });
 
         // Listener for User Stats
@@ -295,6 +299,8 @@ const useAppStore = create(
               return {};
             });
           }
+        }, (error) => {
+          console.warn("Firestore sync user stats permission denied / failed:", error.message);
         });
 
         return () => {

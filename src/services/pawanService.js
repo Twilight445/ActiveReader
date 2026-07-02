@@ -188,6 +188,10 @@ export const generateWithPawan = async (
                 throw new Error('No content in Pawan API response');
             }
 
+            if (responseText.includes('Discord Keys Discontinued') || responseText.includes('API Error:')) {
+                throw new Error('Pawan API Error: Discord keys are discontinued. Please sign up at https://pawan.krd to generate a new free API key.');
+            }
+
             console.log(`Pawan API response received (${model.name})`);
             return responseText;
 

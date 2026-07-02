@@ -514,7 +514,7 @@ const BookViewer = () => {
     } catch (error) {
       console.error(error);
       toggleActivity(false);
-      alert("Error generating activity. Check internet connection.");
+      alert(error.message || "Error generating activity. Check internet connection.");
     } finally {
       setIsGenerating(false);
     }
